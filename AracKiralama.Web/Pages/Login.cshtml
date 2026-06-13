@@ -1,0 +1,40 @@
+@page "/Login"
+@model AracKiralama.Web.Pages.LoginModel
+@{
+    ViewData["Title"] = "Giriş";
+}
+
+<div class="auth-card">
+    <p class="text-muted small mb-1">Araç Kiralama</p>
+    <h2 class="mb-1">Giriş</h2>
+    <p class="text-muted small mb-4">Hesabınızla devam edin</p>
+
+    @if (!string.IsNullOrEmpty(Model.ErrorMessage))
+    {
+        <div class="alert alert-danger">@Model.ErrorMessage</div>
+    }
+    <form method="post">
+        <input type="hidden" asp-for="Input.ReturnUrl" />
+        <div class="mb-3">
+            <label class="form-label" asp-for="Input.Email"></label>
+            <input class="form-control" asp-for="Input.Email" autocomplete="username" />
+            <span class="text-danger small" asp-validation-for="Input.Email"></span>
+        </div>
+        <div class="mb-3">
+            <label class="form-label" asp-for="Input.Password"></label>
+            <input class="form-control" asp-for="Input.Password" autocomplete="current-password" />
+            <span class="text-danger small" asp-validation-for="Input.Password"></span>
+        </div>
+        <div class="form-check mb-4">
+            <input class="form-check-input" asp-for="Input.RememberMe" />
+            <label class="form-check-label" asp-for="Input.RememberMe"></label>
+        </div>
+        <div class="d-grid gap-2">
+            <button type="submit" class="btn btn-primary btn-lg">Giriş yap</button>
+        </div>
+        <div class="d-flex flex-wrap justify-content-between gap-2 mt-3">
+            <a class="btn btn-link px-0" href="/Register">Kayıt ol</a>
+            <a class="btn btn-link px-0" href="/">Ana sayfa</a>
+        </div>
+    </form>
+</div>

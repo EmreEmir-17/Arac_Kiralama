@@ -1,0 +1,64 @@
+<div class="top-row ps-3 navbar navbar-dark">
+    <div class="container-fluid px-2">
+        <a class="navbar-brand" href="">Araç Kiralama</a>
+    </div>
+</div>
+
+<input type="checkbox" title="Menü" class="navbar-toggler" />
+
+<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
+    <nav class="nav flex-column">
+        <div class="nav-item px-2">
+            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">Ana sayfa</NavLink>
+        </div>
+
+        <AuthorizeView>
+            <Authorized>
+                <div class="nav-section-label px-3">Hesap</div>
+                <div class="nav-item px-2">
+                    <NavLink class="nav-link" href="profile">Profil</NavLink>
+                </div>
+            </Authorized>
+        </AuthorizeView>
+
+        <AuthorizeView>
+            <NotAuthorized>
+                <div class="nav-section-label px-3">Hesap</div>
+                <div class="nav-item px-2">
+                    <a class="nav-link" href="/Login">Giriş</a>
+                </div>
+                <div class="nav-item px-2">
+                    <a class="nav-link" href="/Register">Kayıt ol</a>
+                </div>
+            </NotAuthorized>
+        </AuthorizeView>
+
+        <AuthorizeView Roles="@AppRoles.Customer">
+            <Authorized Context="auth">
+                <div class="nav-section-label px-3">Müşteri</div>
+                <div class="nav-item px-2">
+                    <NavLink class="nav-link" href="my-reservations">Rezervasyonlarım</NavLink>
+                </div>
+                <div class="nav-item px-2">
+                    <NavLink class="nav-link" href="my-rentals">Kiralamalarım</NavLink>
+                </div>
+            </Authorized>
+        </AuthorizeView>
+
+        <AuthorizeView Roles="Admin,Operator,ReadOnly">
+            <Authorized Context="auth">
+                <div class="nav-section-label px-3">Operasyon</div>
+                <div class="nav-item px-2"><NavLink class="nav-link" href="branches">Şubeler</NavLink></div>
+                <div class="nav-item px-2"><NavLink class="nav-link" href="vehicles">Araçlar</NavLink></div>
+                <div class="nav-item px-2"><NavLink class="nav-link" href="customers">Müşteriler</NavLink></div>
+                <div class="nav-item px-2"><NavLink class="nav-link" href="rentals">Kiralamalar</NavLink></div>
+                <div class="nav-item px-2"><NavLink class="nav-link" href="staff-reservations">Rezervasyonlar</NavLink></div>
+                <div class="nav-item px-2"><NavLink class="nav-link" href="staff-billing">Fatura / ödeme</NavLink></div>
+                <div class="nav-item px-2"><NavLink class="nav-link" href="staff-catalog">Katalog ve kampanya</NavLink></div>
+                <div class="nav-item px-2"><NavLink class="nav-link" href="staff-compliance">Hasar / sigorta / belge</NavLink></div>
+                <div class="nav-item px-2"><NavLink class="nav-link" href="fleet-assignments">Filo atamaları</NavLink></div>
+                <div class="nav-item px-2"><NavLink class="nav-link" href="maintenance">Bakım kayıtları</NavLink></div>
+            </Authorized>
+        </AuthorizeView>
+    </nav>
+</div>

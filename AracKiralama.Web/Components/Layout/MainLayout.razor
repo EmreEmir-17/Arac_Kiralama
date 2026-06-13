@@ -1,0 +1,36 @@
+@inherits LayoutComponentBase
+
+<div class="page">
+    <div class="sidebar">
+        <NavMenu />
+    </div>
+
+    <main>
+        <div class="top-row px-3 px-md-4 d-flex align-items-center w-100">
+            <span class="d-none d-sm-inline text-muted small fw-semibold">Araç Kiralama</span>
+            <div class="ms-auto d-flex align-items-center gap-2">
+                <AuthorizeView>
+                    <Authorized Context="auth">
+                        <span class="user-pill" title="@auth.User.Identity?.Name">@auth.User.Identity?.Name</span>
+                        <a class="btn btn-sm btn-outline-secondary" href="/Logout">Çıkış</a>
+                    </Authorized>
+                    <NotAuthorized>
+                        <a class="btn btn-sm btn-primary" href="/Login">Giriş</a>
+                    </NotAuthorized>
+                </AuthorizeView>
+            </div>
+        </div>
+
+        <div class="content-shell">
+            <article class="content px-3 px-md-4">
+                @Body
+            </article>
+        </div>
+    </main>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+    Beklenmeyen bir hata oluştu.
+    <a href="." class="reload">Yenile</a>
+    <span class="dismiss" role="button" aria-label="Kapat">✕</span>
+</div>

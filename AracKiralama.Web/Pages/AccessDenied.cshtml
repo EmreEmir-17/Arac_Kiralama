@@ -1,0 +1,12 @@
+@page "/AccessDenied"
+@model AracKiralama.Web.Pages.AccessDeniedModel
+@{
+    ViewData["Title"] = "Erişim";
+}
+
+<div class="auth-card text-center">
+    <div class="mb-3 fs-1" aria-hidden="true">🔒</div>
+    <h2 class="h4 fw-bold">Bu işlem için yetkiniz yok</h2>
+    <p class="text-muted mb-4">Salt okunur rol ile kayıt ekleyemez veya silemezsiniz.</p>
+    <a class="btn btn-primary w-100" href="/">Ana sayfaya dön</a>
+</div>

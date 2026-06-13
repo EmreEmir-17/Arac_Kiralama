@@ -1,0 +1,96 @@
+@page "/"
+@attribute [Authorize]
+
+<PageTitle>Ana sayfa</PageTitle>
+
+<div class="app-hero">
+    <div class="app-hero-inner">
+        <div class="app-hero-badge">Kontrol paneli</div>
+        <h1>Araç kiralama ve filo yönetimi</h1>
+        <p class="lead">
+            Şubeler, araç filosu, müşteriler ve kiralama süreçlerini tek yerden yönetin.
+            Veritabanı: <strong>Araç KiralamaDB</strong>
+        </p>
+    </div>
+</div>
+
+<AuthorizeView Roles="@AppRoles.Customer">
+    <Authorized>
+        <h2 class="h5 fw-bold mb-3">Hızlı erişim — müşteri</h2>
+        <div class="app-card-grid mb-4">
+            <NavLink class="app-card" href="my-reservations">
+                <span class="app-card-icon" aria-hidden="true">📅</span>
+                <div class="app-card-title">Rezervasyonlarım</div>
+                <p class="app-card-desc">Tarih seçip araç için ön talep oluşturun.</p>
+            </NavLink>
+            <NavLink class="app-card" href="my-rentals">
+                <span class="app-card-icon" aria-hidden="true">🚗</span>
+                <div class="app-card-title">Kiralamalarım</div>
+                <p class="app-card-desc">Onaylı kiralamalarınız ve sözleşme belgeleri.</p>
+            </NavLink>
+            <NavLink class="app-card" href="profile">
+                <span class="app-card-icon" aria-hidden="true">👤</span>
+                <div class="app-card-title">Profil</div>
+                <p class="app-card-desc">Görünen ad, iletişim ve kurumsal bilgiler.</p>
+            </NavLink>
+        </div>
+    </Authorized>
+</AuthorizeView>
+
+<AuthorizeView Roles="Admin,Operator,ReadOnly">
+    <Authorized>
+        <h2 class="h5 fw-bold mb-3">Hızlı erişim — operasyon</h2>
+        <div class="app-card-grid">
+            <NavLink class="app-card" href="branches">
+                <span class="app-card-icon" aria-hidden="true">🏢</span>
+                <div class="app-card-title">Şubeler</div>
+                <p class="app-card-desc">Lokasyon ve iletişim bilgileri.</p>
+            </NavLink>
+            <NavLink class="app-card" href="vehicles">
+                <span class="app-card-icon" aria-hidden="true">🚙</span>
+                <div class="app-card-title">Araçlar</div>
+                <p class="app-card-desc">Plaka, sınıf, günlük ücret ve durum.</p>
+            </NavLink>
+            <NavLink class="app-card" href="customers">
+                <span class="app-card-icon" aria-hidden="true">👥</span>
+                <div class="app-card-title">Müşteriler</div>
+                <p class="app-card-desc">Bireysel ve kurumsal kayıtlar.</p>
+            </NavLink>
+            <NavLink class="app-card" href="rentals">
+                <span class="app-card-icon" aria-hidden="true">📋</span>
+                <div class="app-card-title">Kiralamalar</div>
+                <p class="app-card-desc">Sözleşme ve kiralama kayıtları.</p>
+            </NavLink>
+            <NavLink class="app-card" href="staff-reservations">
+                <span class="app-card-icon" aria-hidden="true">🗓️</span>
+                <div class="app-card-title">Rezervasyonlar</div>
+                <p class="app-card-desc">Bekleyen talepleri kiralamaya çevirin.</p>
+            </NavLink>
+            <NavLink class="app-card" href="staff-billing">
+                <span class="app-card-icon" aria-hidden="true">💳</span>
+                <div class="app-card-title">Fatura / ödeme</div>
+                <p class="app-card-desc">Fatura kesimi ve tahsilat.</p>
+            </NavLink>
+            <NavLink class="app-card" href="staff-catalog">
+                <span class="app-card-icon" aria-hidden="true">🏷️</span>
+                <div class="app-card-title">Katalog ve kampanya</div>
+                <p class="app-card-desc">Sınıf, ek ürün, kampanya, sezon fiyatı.</p>
+            </NavLink>
+            <NavLink class="app-card" href="staff-compliance">
+                <span class="app-card-icon" aria-hidden="true">🛡️</span>
+                <div class="app-card-title">Hasar / sigorta / belge</div>
+                <p class="app-card-desc">Muayene, sigorta ve dosya yükleme.</p>
+            </NavLink>
+            <NavLink class="app-card" href="fleet-assignments">
+                <span class="app-card-icon" aria-hidden="true">🔗</span>
+                <div class="app-card-title">Filo atamaları</div>
+                <p class="app-card-desc">Kurumsal araç kullanımı.</p>
+            </NavLink>
+            <NavLink class="app-card" href="maintenance">
+                <span class="app-card-icon" aria-hidden="true">🔧</span>
+                <div class="app-card-title">Bakım kayıtları</div>
+                <p class="app-card-desc">Servis geçmişi ve maliyet.</p>
+            </NavLink>
+        </div>
+    </Authorized>
+</AuthorizeView>

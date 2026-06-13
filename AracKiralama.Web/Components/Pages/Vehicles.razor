@@ -1,0 +1,558 @@
+@page "/vehicles"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+<PageTitle>Araçlar</PageTitle>
+
+<h2>Araçlar</h2>
+
+@if (_categories is not null && _categories.Count == 0)
+{
+    <div class="alert alert-warning">Önce <a href="staff-catalog">araç sınıfı</a> ekleyin.</div>
+}
+
+@if (_branches is null || _branches.Count == 0)
+{
+    <div class="alert alert-warning">Önce en az bir şube ekleyin.</div>
+}
+else
+{
+    <AuthorizeView Policy="@AppPolicies.CanWrite">
+        <Authorized Context="vehicleAuth">
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>@(_editingId is null ? "Yeni araç" : $"Araç düzenle (#{_editingId})")</span>
+                    @if (_editingId is not null)
+                    {
+                        <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CancelEdit">Vazgeç</button>
+                    }
+                </div>
+                <div class="card-body">
+                    <EditForm Model="_model" OnValidSubmit="SaveVehicleAsync" FormName="vehicleForm">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary />
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-2">
+                                <label class="form-label">Şube</label>
+                                <InputSelect class="form-select" @bind-Value="_model.BranchId">
+                                    @foreach (var b in _branches)
+                                    {
+                                        <option value="@b.Id">@b.Name</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Sınıf</label>
+                                <InputSelect class="form-select" @bind-Value="_model.VehicleCategoryId">
+                                    @foreach (var c in _categories ?? [])
+                                    {
+                                        <option value="@c.Id">@c.Name</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Plaka</label>
+                                <InputText class="form-control" @bind-Value="_model.Plate" />
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Marka</label>
+                                <InputText class="form-control" @bind-Value="_model.Brand" />
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Model</label>
+                                <InputText class="form-control" @bind-Value="_model.Model" />
+                            </div>
+                            <div class="col-md-1">
+                                <label class="form-label">Yıl</label>
+                                <InputNumber class="form-control" TValue="int?" @bind-Value="_model.ModelYear" />
+                            </div>
+                            <div class="col-md-1">
+                                <label class="form-label">Km</label>
+                                <InputNumber class="form-control" TValue="int?" @bind-Value="_model.OdometerKm" />
+                            </div>
+                            <div class="col-md-1">
+                                <label class="form-label">Koltuk</label>
+                                <InputNumber class="form-control" TValue="int?" @bind-Value="_model.Seats" />
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Günlük (₺)</label>
+                                <InputNumber class="form-control" @bind-Value="_model.DailyRate" />
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Yakıt</label>
+                                <InputText class="form-control" @bind-Value="_model.FuelType" placeholder="ör. Dizel" />
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Vites</label>
+                                <InputText class="form-control" @bind-Value="_model.Transmission" placeholder="ör. Otomatik" />
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Liste durumu</label>
+                                <InputSelect class="form-select" @bind-Value="_model.Status">
+                                    @foreach (var s in Enum.GetValues<VehicleStatus>())
+                                    {
+                                        <option value="@s">@TrLabels.VehicleStatus(s)</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Özellikler / donanım</label>
+                                <InputTextArea class="form-control" rows="3" @bind-Value="_model.Features" placeholder="Klima, Apple CarPlay, park sensörü…" />
+                            </div>
+                            <div class="col-12 mt-2">
+                                <button class="btn btn-primary" type="submit">@(_editingId is null ? "Ekle" : "Güncelle")</button>
+                            </div>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </Authorized>
+    </AuthorizeView>
+}
+
+@if (_message is not null)
+{
+    <div class="alert alert-info">@_message</div>
+}
+
+@if (_items is null)
+{
+    <p>Yükleniyor…</p>
+}
+else
+{
+    <table class="table table-striped table-sm align-middle">
+        <thead>
+            <tr>
+                <th>Sınıf</th>
+                <th>Plaka</th>
+                <th>Marka / Model</th>
+                <th>Yıl</th>
+                <th>Km</th>
+                <th>Şube</th>
+                <th>Günlük</th>
+                <th>Görünen durum</th>
+                <th>İşlem</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var v in _items)
+            {
+                <tr>
+                    <td>@v.CategoryName</td>
+                    <td>@v.Plate</td>
+                    <td>@v.Brand @v.Model</td>
+                    <td>@(v.ModelYear?.ToString() ?? "—")</td>
+                    <td>@(v.OdometerKm?.ToString("N0") ?? "—")</td>
+                    <td>@v.BranchName</td>
+                    <td>@v.DailyRate.ToString("N2")</td>
+                    <td>
+                        <span class="badge @(v.ActiveCustomerName is not null ? "bg-warning text-dark" : v.Status == VehicleStatus.Maintenance ? "bg-secondary" : v.Status == VehicleStatus.Inactive ? "bg-dark" : "bg-success")">
+                            @DisplayStatus(v)
+                        </span>
+                    </td>
+                    <td class="text-nowrap">
+                        <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => OpenDetail(v)">Detay</button>
+                        <AuthorizeView Policy="@AppPolicies.CanWrite">
+                            <Authorized Context="auth2">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => BeginEdit(v)">Düzenle</button>
+                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(v.Id)">Sil</button>
+                            </Authorized>
+                            <NotAuthorized>
+                                <span class="text-muted small">Salt okunur</span>
+                            </NotAuthorized>
+                        </AuthorizeView>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@if (_showDetail && _detailRow is not null)
+{
+    var d = _detailRow;
+    <div class="modal d-block" tabindex="-1" style="background: rgba(0,0,0,.45);" @onclick="CloseDetail">
+        <div class="modal-dialog modal-dialog-scrollable modal-lg" @onclick:stopPropagation="true">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@d.Plate — @d.Brand @d.Model</h5>
+                    <button type="button" class="btn-close" @onclick="CloseDetail"></button>
+                </div>
+                <div class="modal-body">
+                    <dl class="row small mb-0">
+                        <dt class="col-sm-4">Sınıf</dt><dd class="col-sm-8">@d.CategoryName</dd>
+                        <dt class="col-sm-4">Şube</dt><dd class="col-sm-8">@d.BranchName</dd>
+                        <dt class="col-sm-4">Model yılı</dt><dd class="col-sm-8">@(d.ModelYear?.ToString() ?? "—")</dd>
+                        <dt class="col-sm-4">Kilometre</dt><dd class="col-sm-8">@(d.OdometerKm?.ToString("N0") ?? "—") km</dd>
+                        <dt class="col-sm-4">Koltuk</dt><dd class="col-sm-8">@(d.Seats?.ToString() ?? "—")</dd>
+                        <dt class="col-sm-4">Yakıt</dt><dd class="col-sm-8">@(string.IsNullOrWhiteSpace(d.FuelType) ? "—" : d.FuelType)</dd>
+                        <dt class="col-sm-4">Vites</dt><dd class="col-sm-8">@(string.IsNullOrWhiteSpace(d.Transmission) ? "—" : d.Transmission)</dd>
+                        <dt class="col-sm-4">Günlük ücret</dt><dd class="col-sm-8">@d.DailyRate.ToString("N2") ₺</dd>
+                        <dt class="col-sm-4">Liste durumu</dt><dd class="col-sm-8">@TrLabels.VehicleStatus(d.Status)</dd>
+                        <dt class="col-sm-4">Görünen durum</dt><dd class="col-sm-8">@DisplayStatus(d)</dd>
+                    </dl>
+                    @if (!string.IsNullOrWhiteSpace(d.Features))
+                    {
+                        <h6 class="mt-3">Özellikler</h6>
+                        <p class="small text-body-secondary mb-0" style="white-space: pre-wrap;">@d.Features</p>
+                    }
+                    @if (d.ActiveCustomerName is not null)
+                    {
+                        <h6 class="mt-3">Şu anki kiralama</h6>
+                        <p class="small mb-1"><strong>Müşteri:</strong> @d.ActiveCustomerName</p>
+                        <p class="small mb-1"><strong>Başlangıç (yerel):</strong> @(d.ActiveRentalStartUtc?.ToLocalTime().ToString("g") ?? "—")</p>
+                        <p class="small mb-0"><strong>Bitiş (yerel):</strong> @(d.ActiveRentalEndUtc?.ToLocalTime().ToString("g") ?? "—")</p>
+                        @if (d.ActiveRentalId is not null)
+                        {
+                            <p class="small text-muted mb-0 mt-1">Kiralama no: #@d.ActiveRentalId</p>
+                        }
+                    }
+                    else
+                    {
+                        <p class="small text-muted mt-3 mb-0">Bu araç için şu an çakışan onaylı / aktif kiralama kaydı yok (tarih aralığına göre).</p>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseDetail">Kapat</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Inject] public IDbContextFactory<AppDbContext> DbFactory { get; set; } = default!;
+
+    private List<BranchOption>? _branches;
+    private List<CatOption>? _categories;
+    private List<VehicleRow>? _items;
+    private VehicleForm _model = new();
+    private string? _message;
+    private int? _editingId;
+    private bool _showDetail;
+    private VehicleRow? _detailRow;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _branches = await db.Branches.AsNoTracking().OrderBy(x => x.Name).Select(x => new BranchOption(x.Id, x.Name)).ToListAsync();
+        if (_branches.Count > 0 && _model.BranchId == 0)
+        {
+            _model.BranchId = _branches[0].Id;
+        }
+
+        _categories = await db.VehicleCategories.AsNoTracking().OrderBy(x => x.Name).Select(x => new CatOption(x.Id, x.Name)).ToListAsync();
+        if (_categories.Count > 0 && _model.VehicleCategoryId == 0)
+        {
+            _model.VehicleCategoryId = _categories[0].Id;
+        }
+
+        await ReloadVehiclesAsync();
+    }
+
+    private async Task ReloadVehiclesAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var raw = await db.Vehicles.AsNoTracking()
+            .OrderBy(x => x.Plate)
+            .Select(x => new
+            {
+                x.Id,
+                x.BranchId,
+                x.VehicleCategoryId,
+                x.Plate,
+                x.Brand,
+                x.Model,
+                x.ModelYear,
+                x.OdometerKm,
+                x.Seats,
+                x.FuelType,
+                x.Transmission,
+                x.Features,
+                BranchName = x.Branch.Name,
+                CategoryName = x.VehicleCategory.Name,
+                x.DailyRate,
+                x.Status
+            })
+            .ToListAsync();
+
+        var now = DateTime.UtcNow;
+        var rentalSnap = await db.Rentals.AsNoTracking()
+            .Where(r => r.State != RentalState.Cancelled && r.State != RentalState.Completed
+                        && r.StartUtc <= now && r.EndUtc > now)
+            .Select(r => new
+            {
+                r.VehicleId,
+                RentalId = r.Id,
+                CustomerName = r.Customer.FullName,
+                r.StartUtc,
+                r.EndUtc
+            })
+            .ToListAsync();
+        var rentalByVehicle = rentalSnap
+            .GroupBy(x => x.VehicleId)
+            .ToDictionary(g => g.Key, g => g.First());
+
+        _items = raw.Select(x =>
+        {
+            rentalByVehicle.TryGetValue(x.Id, out var ar);
+            return new VehicleRow(
+                x.Id,
+                x.BranchId,
+                x.VehicleCategoryId,
+                x.Plate,
+                x.Brand,
+                x.Model,
+                x.ModelYear,
+                x.OdometerKm,
+                x.Seats,
+                x.FuelType,
+                x.Transmission,
+                x.Features,
+                x.BranchName,
+                x.CategoryName,
+                x.DailyRate,
+                x.Status,
+                ar?.RentalId,
+                ar?.CustomerName,
+                ar?.StartUtc,
+                ar?.EndUtc);
+        }).ToList();
+    }
+
+    private static string DisplayStatus(VehicleRow v)
+    {
+        if (v.Status == VehicleStatus.Maintenance)
+        {
+            return TrLabels.VehicleStatus(VehicleStatus.Maintenance);
+        }
+
+        if (v.Status == VehicleStatus.Inactive)
+        {
+            return TrLabels.VehicleStatus(VehicleStatus.Inactive);
+        }
+
+        if (v.ActiveCustomerName is not null)
+        {
+            return "Şu an kirada";
+        }
+
+        return TrLabels.VehicleStatus(v.Status);
+    }
+
+    private void OpenDetail(VehicleRow v)
+    {
+        _detailRow = v;
+        _showDetail = true;
+    }
+
+    private void CloseDetail()
+    {
+        _showDetail = false;
+        _detailRow = null;
+    }
+
+    private void BeginEdit(VehicleRow v)
+    {
+        _message = null;
+        _editingId = v.Id;
+        _model = new VehicleForm
+        {
+            BranchId = v.BranchId,
+            VehicleCategoryId = v.VehicleCategoryId,
+            Plate = v.Plate,
+            Brand = v.Brand,
+            Model = v.Model,
+            ModelYear = v.ModelYear,
+            OdometerKm = v.OdometerKm,
+            Seats = v.Seats,
+            FuelType = v.FuelType,
+            Transmission = v.Transmission,
+            Features = v.Features,
+            DailyRate = v.DailyRate,
+            Status = v.Status
+        };
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _model = new VehicleForm
+        {
+            BranchId = _branches?.FirstOrDefault()?.Id ?? 0,
+            VehicleCategoryId = _categories?.FirstOrDefault()?.Id ?? 1,
+            DailyRate = 1500,
+            Status = VehicleStatus.Available
+        };
+    }
+
+    private async Task SaveVehicleAsync()
+    {
+        _message = null;
+        if (_model.DailyRate <= 0)
+        {
+            _message = "Günlük ücret sıfırdan büyük olmalı.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_model.Plate) || string.IsNullOrWhiteSpace(_model.Brand) || string.IsNullOrWhiteSpace(_model.Model))
+        {
+            _message = "Plaka, marka ve model zorunlu.";
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        if (_editingId is int editId)
+        {
+            var entity = await db.Vehicles.FirstOrDefaultAsync(x => x.Id == editId);
+            if (entity is null)
+            {
+                CancelEdit();
+                return;
+            }
+
+            entity.BranchId = _model.BranchId;
+            entity.VehicleCategoryId = _model.VehicleCategoryId;
+            entity.Plate = _model.Plate.Trim().ToUpperInvariant();
+            entity.Brand = _model.Brand.Trim();
+            entity.Model = _model.Model.Trim();
+            entity.ModelYear = _model.ModelYear;
+            entity.OdometerKm = _model.OdometerKm;
+            entity.Seats = _model.Seats;
+            entity.FuelType = string.IsNullOrWhiteSpace(_model.FuelType) ? null : _model.FuelType.Trim();
+            entity.Transmission = string.IsNullOrWhiteSpace(_model.Transmission) ? null : _model.Transmission.Trim();
+            entity.Features = string.IsNullOrWhiteSpace(_model.Features) ? null : _model.Features.Trim();
+            entity.DailyRate = _model.DailyRate;
+            entity.Status = _model.Status;
+            try
+            {
+                await db.SaveChangesAsync();
+            }
+            catch (DbUpdateException)
+            {
+                _message = "Kayıt güncellenemedi (plaka benzersiz olmalı).";
+                return;
+            }
+
+            CancelEdit();
+            await ReloadVehiclesAsync();
+            _message = "Araç güncellendi.";
+            return;
+        }
+
+        db.Vehicles.Add(new Vehicle
+        {
+            BranchId = _model.BranchId,
+            VehicleCategoryId = _model.VehicleCategoryId,
+            Plate = _model.Plate.Trim().ToUpperInvariant(),
+            Brand = _model.Brand.Trim(),
+            Model = _model.Model.Trim(),
+            ModelYear = _model.ModelYear,
+            OdometerKm = _model.OdometerKm,
+            Seats = _model.Seats,
+            FuelType = string.IsNullOrWhiteSpace(_model.FuelType) ? null : _model.FuelType.Trim(),
+            Transmission = string.IsNullOrWhiteSpace(_model.Transmission) ? null : _model.Transmission.Trim(),
+            Features = string.IsNullOrWhiteSpace(_model.Features) ? null : _model.Features.Trim(),
+            DailyRate = _model.DailyRate,
+            Status = _model.Status
+        });
+
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            _message = "Plaka benzersiz olmalı veya şube geçersiz.";
+            return;
+        }
+
+        CancelEdit();
+        await ReloadVehiclesAsync();
+        _message = "Araç kaydedildi.";
+    }
+
+    private async Task DeleteAsync(int id)
+    {
+        _message = null;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var v = await db.Vehicles.FindAsync(id);
+        if (v is null)
+        {
+            return;
+        }
+
+        db.Vehicles.Remove(v);
+        try
+        {
+            await db.SaveChangesAsync();
+            if (_editingId == id)
+            {
+                CancelEdit();
+            }
+
+            await ReloadVehiclesAsync();
+            _message = "Araç silindi.";
+        }
+        catch (DbUpdateException)
+        {
+            _message = "Kiralama veya filo kaydı varken silinemez.";
+        }
+    }
+
+    private sealed record BranchOption(int Id, string Name);
+
+    private sealed record CatOption(int Id, string Name);
+
+    private sealed record VehicleRow(
+        int Id,
+        int BranchId,
+        int VehicleCategoryId,
+        string Plate,
+        string Brand,
+        string Model,
+        int? ModelYear,
+        int? OdometerKm,
+        int? Seats,
+        string? FuelType,
+        string? Transmission,
+        string? Features,
+        string BranchName,
+        string CategoryName,
+        decimal DailyRate,
+        VehicleStatus Status,
+        int? ActiveRentalId,
+        string? ActiveCustomerName,
+        DateTime? ActiveRentalStartUtc,
+        DateTime? ActiveRentalEndUtc);
+
+    private sealed class VehicleForm
+    {
+        [Required]
+        public int BranchId { get; set; }
+
+        [Range(1, int.MaxValue)]
+        public int VehicleCategoryId { get; set; } = 1;
+
+        [Required(ErrorMessage = "Plaka zorunlu")]
+        public string Plate { get; set; } = string.Empty;
+
+        [Required]
+        public string Brand { get; set; } = string.Empty;
+
+        [Required]
+        public string Model { get; set; } = string.Empty;
+
+        public int? ModelYear { get; set; }
+        public int? OdometerKm { get; set; }
+        public int? Seats { get; set; }
+        public string? FuelType { get; set; }
+        public string? Transmission { get; set; }
+        public string? Features { get; set; }
+
+        public decimal DailyRate { get; set; } = 1500;
+
+        public VehicleStatus Status { get; set; } = VehicleStatus.Available;
+    }
+}

@@ -1,0 +1,218 @@
+@page "/maintenance"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+<PageTitle>Bakım kayıtları</PageTitle>
+
+<h2>Bakım kayıtları</h2>
+
+@if (_vehicles is null || _vehicles.Count == 0)
+{
+    <div class="alert alert-warning">Önce araç ekleyin.</div>
+}
+else
+{
+    <AuthorizeView Policy="@AppPolicies.CanWrite">
+        <Authorized Context="auth">
+            <EditForm Model="_model" OnValidSubmit="AddAsync" FormName="maintForm">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+                <div class="row g-2 align-items-end mb-3">
+                    <div class="col-md-3">
+                        <label class="form-label">Araç</label>
+                        <InputSelect class="form-select" @bind-Value="_model.VehicleId">
+                            @foreach (var v in _vehicles)
+                            {
+                                <option value="@v.Id">@v.Label</option>
+                            }
+                        </InputSelect>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Tarih (yerel)</label>
+                        <InputDate class="form-control" Type="InputDateType.DateTimeLocal" @bind-Value="_model.ServiceLocal" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Açıklama</label>
+                        <InputText class="form-control" @bind-Value="_model.Description" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Maliyet (₺)</label>
+                        <InputNumber class="form-control" @bind-Value="_model.Cost" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Km</label>
+                        <InputNumber class="form-control" @bind-Value="_model.OdometerKm" />
+                    </div>
+                    <div class="col-12 mt-2">
+                        <button class="btn btn-primary" type="submit">Ekle</button>
+                    </div>
+                </div>
+            </EditForm>
+        </Authorized>
+    </AuthorizeView>
+}
+
+@if (_message is not null)
+{
+    <div class="alert alert-info">@_message</div>
+}
+
+@if (_items is null)
+{
+    <p>Yükleniyor…</p>
+}
+else
+{
+    <table class="table table-striped table-sm">
+        <thead>
+            <tr>
+                <th>Id</th>
+                <th>Araç</th>
+                <th>Tarih</th>
+                <th>Açıklama</th>
+                <th>Maliyet</th>
+                <th>Km</th>
+                <th>İşlem</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var x in _items)
+            {
+                <tr>
+                    <td>@x.Id</td>
+                    <td>@x.VehicleLabel</td>
+                    <td>@x.ServiceLocal</td>
+                    <td>@x.Description</td>
+                    <td>@(x.Cost?.ToString("N2") ?? "—")</td>
+                    <td>@(x.OdometerKm?.ToString() ?? "—")</td>
+                    <td>
+                        <AuthorizeView Policy="@AppPolicies.CanWrite">
+                            <Authorized Context="auth">
+                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(x.Id)">Sil</button>
+                            </Authorized>
+                            <NotAuthorized>
+                                <span class="text-muted">—</span>
+                            </NotAuthorized>
+                        </AuthorizeView>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    [Inject] public IDbContextFactory<AppDbContext> DbFactory { get; set; } = default!;
+
+    private List<VehicleOption>? _vehicles;
+    private List<MaintRow>? _items;
+    private MaintForm _model = new();
+    private string? _message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _vehicles = await db.Vehicles.AsNoTracking()
+            .OrderBy(x => x.Plate)
+            .Select(x => new VehicleOption(x.Id, x.Plate + " — " + x.Brand + " " + x.Model))
+            .ToListAsync();
+
+        if (_vehicles.Count > 0 && _model.VehicleId == 0)
+        {
+            _model.VehicleId = _vehicles[0].Id;
+        }
+
+        _model.ServiceLocal = DateTime.Now;
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var raw = await db.MaintenanceRecords.AsNoTracking()
+            .OrderByDescending(x => x.ServiceDateUtc)
+            .Select(x => new
+            {
+                x.Id,
+                VehicleLabel = x.Vehicle.Plate + " " + x.Vehicle.Brand + " " + x.Vehicle.Model,
+                x.ServiceDateUtc,
+                x.Description,
+                x.Cost,
+                x.OdometerKm
+            })
+            .ToListAsync();
+
+        _items = raw.Select(x => new MaintRow(
+            x.Id,
+            x.VehicleLabel,
+            x.ServiceDateUtc.ToLocalTime(),
+            x.Description,
+            x.Cost,
+            x.OdometerKm)).ToList();
+    }
+
+    private async Task AddAsync()
+    {
+        _message = null;
+        if (string.IsNullOrWhiteSpace(_model.Description))
+        {
+            _message = "Açıklama zorunlu.";
+            return;
+        }
+
+        var serviceUtc = DateTime.SpecifyKind(_model.ServiceLocal, DateTimeKind.Local).ToUniversalTime();
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.MaintenanceRecords.Add(new MaintenanceRecord
+        {
+            VehicleId = _model.VehicleId,
+            ServiceDateUtc = serviceUtc,
+            Description = _model.Description.Trim(),
+            Cost = _model.Cost,
+            OdometerKm = _model.OdometerKm
+        });
+
+        await db.SaveChangesAsync();
+        _model = new MaintForm
+        {
+            VehicleId = _vehicles!.First().Id,
+            ServiceLocal = DateTime.Now
+        };
+        await ReloadAsync();
+        _message = "Bakım kaydı eklendi.";
+    }
+
+    private async Task DeleteAsync(int id)
+    {
+        _message = null;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var row = await db.MaintenanceRecords.FindAsync(id);
+        if (row is null)
+        {
+            return;
+        }
+
+        db.MaintenanceRecords.Remove(row);
+        await db.SaveChangesAsync();
+        await ReloadAsync();
+        _message = "Kayıt silindi.";
+    }
+
+    private sealed record VehicleOption(int Id, string Label);
+
+    private sealed record MaintRow(int Id, string VehicleLabel, DateTime ServiceLocal, string Description, decimal? Cost, int? OdometerKm);
+
+    private sealed class MaintForm
+    {
+        [Range(1, int.MaxValue)]
+        public int VehicleId { get; set; }
+
+        public DateTime ServiceLocal { get; set; }
+
+        [Required]
+        public string Description { get; set; } = string.Empty;
+
+        public decimal? Cost { get; set; }
+        public int? OdometerKm { get; set; }
+    }
+}

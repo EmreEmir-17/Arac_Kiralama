@@ -1,0 +1,197 @@
+@page "/staff-compliance"
+@attribute [Authorize(Roles = "Admin,Operator,ReadOnly")]
+@rendermode InteractiveServer
+
+<PageTitle>Hasar, sigorta, muayene, belge</PageTitle>
+
+<h2>Araç seçimi</h2>
+<InputSelect class="form-select mb-3" @bind-Value="_vehicleId">
+    @foreach (var v in _vehicles ?? [])
+    {
+        <option value="@v.Id">@v.Label</option>
+    }
+</InputSelect>
+
+<h4>Hasar kaydı</h4>
+<AuthorizeView Policy="@AppPolicies.CanWrite">
+    <Authorized Context="auth">
+        <EditForm Model="_dmg" OnValidSubmit="AddDamageAsync" FormName="dmg">
+            <InputTextArea class="form-control mb-2" @bind-Value="_dmg.Description" placeholder="Açıklama" />
+            <InputText class="form-control mb-2" @bind-Value="_dmg.Severity" placeholder="Önem (ör. Orta)" />
+            <InputFile OnChange="OnDamagePhoto" class="mb-2" />
+            <button class="btn btn-primary" type="submit">Kaydet</button>
+        </EditForm>
+    </Authorized>
+</AuthorizeView>
+
+<h4 class="mt-4">Sigorta</h4>
+<AuthorizeView Policy="@AppPolicies.CanWrite">
+    <Authorized Context="auth">
+        <EditForm Model="_ins" OnValidSubmit="AddInsAsync" FormName="ins">
+            <div class="row g-2">
+                <div class="col-md-2"><InputText class="form-control" @bind-Value="_ins.Policy" placeholder="Poliçe no" /></div>
+                <div class="col-md-2"><InputText class="form-control" @bind-Value="_ins.Insurer" placeholder="Sigorta şirketi" /></div>
+                <div class="col-md-2"><InputDate class="form-control" @bind-Value="_ins.Start" /></div>
+                <div class="col-md-2"><InputDate class="form-control" @bind-Value="_ins.End" /></div>
+                <div class="col-md-2"><button class="btn btn-primary" type="submit">Kaydet</button></div>
+            </div>
+        </EditForm>
+    </Authorized>
+</AuthorizeView>
+
+<h4 class="mt-4">Muayene</h4>
+<AuthorizeView Policy="@AppPolicies.CanWrite">
+    <Authorized Context="auth">
+        <EditForm Model="_insp" OnValidSubmit="AddInspAsync" FormName="insp">
+            <div class="row g-2">
+                <div class="col-md-2"><InputDate class="form-control" @bind-Value="_insp.When" /></div>
+                <div class="col-md-2"><InputDate class="form-control" @bind-Value="_insp.ValidUntil" /></div>
+                <div class="col-md-2"><InputText class="form-control" @bind-Value="_insp.Station" /></div>
+                <div class="col-md-2"><button class="btn btn-primary" type="submit">Kaydet</button></div>
+            </div>
+        </EditForm>
+    </Authorized>
+</AuthorizeView>
+
+<h4 class="mt-4">Belge yükle (araç)</h4>
+<AuthorizeView Policy="@AppPolicies.CanWrite">
+    <Authorized Context="auth">
+        <InputFile OnChange="OnDocUpload" />
+    </Authorized>
+</AuthorizeView>
+
+@if (_msg is not null) { <div class="alert alert-info mt-3">@_msg</div> }
+
+@code {
+    [Inject] public IDbContextFactory<AppDbContext> DbFactory { get; set; } = default!;
+    [Inject] public IFileStorage Files { get; set; } = default!;
+    [Inject] public AuthenticationStateProvider Auth { get; set; } = default!;
+
+    private List<VOpt>? _vehicles;
+    private int _vehicleId;
+    private DmgForm _dmg = new();
+    private InsForm _ins = new();
+    private InspForm _insp = new();
+    private IBrowserFile? _dmgFile;
+    private string? _msg;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _vehicles = await db.Vehicles.AsNoTracking().OrderBy(v => v.Plate).Select(v => new VOpt(v.Id, v.Plate + " " + v.Brand)).ToListAsync();
+        if (_vehicles.Count > 0)
+        {
+            _vehicleId = _vehicles[0].Id;
+        }
+
+        _ins.Start = DateTime.Today;
+        _ins.End = DateTime.Today.AddYears(1);
+        _insp.When = DateTime.Today;
+        _insp.ValidUntil = DateTime.Today.AddYears(1);
+    }
+
+    private Task OnDamagePhoto(InputFileChangeEventArgs e)
+    {
+        _dmgFile = e.File;
+        return Task.CompletedTask;
+    }
+
+    private async Task AddDamageAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        string? path = null;
+        if (_dmgFile is not null)
+        {
+            await using var s = _dmgFile.OpenReadStream(10_000_000);
+            path = (await Files.SaveAsync(s, _dmgFile.Name, "damages")).TrimStart('/');
+        }
+
+        db.DamageReports.Add(new DamageReport
+        {
+            VehicleId = _vehicleId,
+            RentalId = null,
+            ReportedUtc = DateTime.UtcNow,
+            Description = _dmg.Description.Trim(),
+            Severity = string.IsNullOrWhiteSpace(_dmg.Severity) ? null : _dmg.Severity.Trim(),
+            PhotoRelativePath = path
+        });
+        await db.SaveChangesAsync();
+        _dmg = new();
+        _msg = "Hasar kaydı eklendi.";
+    }
+
+    private async Task AddInsAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.VehicleInsurances.Add(new VehicleInsurance
+        {
+            VehicleId = _vehicleId,
+            PolicyNumber = _ins.Policy.Trim(),
+            Insurer = _ins.Insurer.Trim(),
+            StartDateUtc = DateTime.SpecifyKind(_ins.Start, DateTimeKind.Utc),
+            EndDateUtc = DateTime.SpecifyKind(_ins.End, DateTimeKind.Utc)
+        });
+        await db.SaveChangesAsync();
+        _msg = "Sigorta eklendi.";
+    }
+
+    private async Task AddInspAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.VehicleInspections.Add(new VehicleInspection
+        {
+            VehicleId = _vehicleId,
+            InspectionDateUtc = DateTime.SpecifyKind(_insp.When, DateTimeKind.Utc),
+            ValidUntilUtc = DateTime.SpecifyKind(_insp.ValidUntil, DateTimeKind.Utc),
+            Station = string.IsNullOrWhiteSpace(_insp.Station) ? null : _insp.Station.Trim()
+        });
+        await db.SaveChangesAsync();
+        _msg = "Muayene eklendi.";
+    }
+
+    private async Task OnDocUpload(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null)
+        {
+            return;
+        }
+
+        var user = (await Auth.GetAuthenticationStateAsync()).User;
+        var uid = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+        await using var s = file.OpenReadStream(20_000_000);
+        var webPath = await Files.SaveAsync(s, file.Name, "documents");
+        var rel = webPath.TrimStart('/');
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.StoredDocuments.Add(new StoredDocument
+        {
+            EntityKind = DocumentEntityKind.Vehicle,
+            EntityId = _vehicleId,
+            FileName = file.Name,
+            RelativePath = rel,
+            UploadedUtc = DateTime.UtcNow,
+            UploadedByUserId = uid
+        });
+        await db.SaveChangesAsync();
+        _msg = "Belge yüklendi.";
+    }
+
+    private sealed record VOpt(int Id, string Label);
+    private sealed class DmgForm { public string Description { get; set; } = ""; public string? Severity { get; set; } }
+    private sealed class InsForm
+    {
+        public string Policy { get; set; } = "";
+        public string Insurer { get; set; } = "";
+        public DateTime Start { get; set; }
+        public DateTime End { get; set; }
+    }
+
+    private sealed class InspForm
+    {
+        public DateTime When { get; set; }
+        public DateTime ValidUntil { get; set; }
+        public string? Station { get; set; }
+    }
+}

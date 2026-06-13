@@ -1,0 +1,430 @@
+@page "/rentals"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+<PageTitle>Kiralamalar</PageTitle>
+
+<h2>Kiralamalar</h2>
+
+@if (_editingId is not null)
+{
+    <AuthorizeView Policy="@AppPolicies.CanWrite">
+        <Authorized Context="auth">
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Kiralama düzenle (#@_editingId)</span>
+                    <button type="button" class="btn btn-sm btn-secondary" @onclick="CancelEdit">Vazgeç</button>
+                </div>
+                <div class="card-body">
+                    <EditForm Model="_editForm" OnValidSubmit="SaveEditAsync" FormName="rentalEditForm">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary />
+                        <div class="row g-2">
+                            <div class="col-md-3">
+                                <label class="form-label">Araç</label>
+                                <InputSelect class="form-select" @bind-Value="_editForm.VehicleId">
+                                    @foreach (var v in _vehicles!)
+                                    {
+                                        <option value="@v.Id">@v.Label</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Müşteri</label>
+                                <InputSelect class="form-select" @bind-Value="_editForm.CustomerId">
+                                    @foreach (var c in _customers!)
+                                    {
+                                        <option value="@c.Id">@c.FullName</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Başlangıç</label>
+                                <InputDate class="form-control" Type="InputDateType.DateTimeLocal" @bind-Value="_editForm.StartLocal" />
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Bitiş</label>
+                                <InputDate class="form-control" Type="InputDateType.DateTimeLocal" @bind-Value="_editForm.EndLocal" />
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Durum</label>
+                                <InputSelect class="form-select" @bind-Value="_editForm.State">
+                                    @foreach (var s in Enum.GetValues<RentalState>())
+                                    {
+                                        <option value="@s">@TrLabels.RentalState(s)</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                            <div class="col-12 mt-2">
+                                <button class="btn btn-primary" type="submit">Kaydet</button>
+                            </div>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </Authorized>
+    </AuthorizeView>
+}
+
+@if (_vehicles is null || _customers is null)
+{
+    <p>Yükleniyor…</p>
+}
+else if (_vehicles.Count == 0 || _customers.Count == 0)
+{
+    <div class="alert alert-warning">Kiralama için en az bir araç ve bir müşteri olmalı.</div>
+}
+else
+{
+    <AuthorizeView Policy="@AppPolicies.CanWrite">
+        <Authorized Context="auth">
+            <EditForm Model="_model" OnValidSubmit="AddAsync" FormName="rentalForm">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+                <div class="row g-2 align-items-end mb-3">
+                    <div class="col-md-3">
+                        <label class="form-label">Araç</label>
+                        <InputSelect class="form-select" @bind-Value="_model.VehicleId">
+                            @foreach (var v in _vehicles)
+                            {
+                                <option value="@v.Id">@v.Label</option>
+                            }
+                        </InputSelect>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Müşteri</label>
+                        <InputSelect class="form-select" @bind-Value="_model.CustomerId">
+                            @foreach (var c in _customers)
+                            {
+                                <option value="@c.Id">@c.FullName</option>
+                            }
+                        </InputSelect>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Başlangıç</label>
+                        <InputDate class="form-control" Type="InputDateType.DateTimeLocal" @bind-Value="_model.StartLocal" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Bitiş</label>
+                        <InputDate class="form-control" Type="InputDateType.DateTimeLocal" @bind-Value="_model.EndLocal" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Durum</label>
+                        <InputSelect class="form-select" @bind-Value="_model.State">
+                            @foreach (var s in Enum.GetValues<RentalState>())
+                            {
+                                <option value="@s">@TrLabels.RentalState(s)</option>
+                            }
+                        </InputSelect>
+                    </div>
+                    <div class="col-md-12 mt-2">
+                        <button class="btn btn-primary" type="submit">Yeni kayıt</button>
+                    </div>
+                </div>
+            </EditForm>
+        </Authorized>
+    </AuthorizeView>
+}
+
+@if (_message is not null)
+{
+    <div class="alert alert-info">@_message</div>
+}
+
+@if (_items is not null)
+{
+    <table class="table table-striped table-sm">
+        <thead>
+            <tr>
+                <th>Kayıt</th>
+                <th>Araç</th>
+                <th>Müşteri</th>
+                <th>Başlangıç</th>
+                <th>Bitiş</th>
+                <th>Durum</th>
+                <th>Tutar (₺)</th>
+                <th>Sözleşme</th>
+                <th>İşlem</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var r in _items)
+            {
+                <tr>
+                    <td>@r.Id</td>
+                    <td>@r.VehiclePlate</td>
+                    <td>@r.CustomerName</td>
+                    <td>@r.StartLocal</td>
+                    <td>@r.EndLocal</td>
+                    <td>@TrLabels.RentalState(r.State)</td>
+                    <td>@(r.TotalPrice?.ToString("N2") ?? "—")</td>
+                    <td>
+                        <AuthorizeView Policy="@AppPolicies.CanWrite">
+                            <Authorized Context="auth">
+                                <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => PdfAsync(r.Id)">Sözleşme</button>
+                            </Authorized>
+                        </AuthorizeView>
+                    </td>
+                    <td>
+                        <AuthorizeView Policy="@AppPolicies.CanWrite">
+                            <Authorized Context="auth">
+                                <button type="button" class="btn btn-sm btn-outline-secondary me-1" @onclick="() => BeginEdit(r)">Düzenle</button>
+                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(r.Id)">Sil</button>
+                            </Authorized>
+                            <NotAuthorized>
+                                <span class="text-muted">—</span>
+                            </NotAuthorized>
+                        </AuthorizeView>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    [Inject] public ContractPdfService PdfService { get; set; } = default!;
+    [Inject] public IDbContextFactory<AppDbContext> DbFactory { get; set; } = default!;
+
+    private List<VehicleOption>? _vehicles;
+    private List<CustomerOption>? _customers;
+    private List<RentalRow>? _items;
+    private RentalForm _model = new();
+    private RentalEditForm _editForm = new();
+    private int? _editingId;
+    private string? _message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _vehicles = await db.Vehicles.AsNoTracking()
+            .OrderBy(x => x.Plate)
+            .Select(x => new VehicleOption(x.Id, x.Plate + " — " + x.Brand + " " + x.Model))
+            .ToListAsync();
+        _customers = await db.Customers.AsNoTracking()
+            .OrderBy(x => x.FullName)
+            .Select(x => new CustomerOption(x.Id, x.FullName))
+            .ToListAsync();
+
+        if (_vehicles.Count > 0 && _model.VehicleId == 0)
+        {
+            _model.VehicleId = _vehicles[0].Id;
+        }
+
+        if (_customers.Count > 0 && _model.CustomerId == 0)
+        {
+            _model.CustomerId = _customers[0].Id;
+        }
+
+        var start = DateTime.Now;
+        _model.StartLocal = start;
+        _model.EndLocal = start.AddDays(1);
+
+        await ReloadRentalsAsync();
+    }
+
+    private async Task ReloadRentalsAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var raw = await db.Rentals.AsNoTracking()
+            .OrderByDescending(x => x.Id)
+            .Select(x => new
+            {
+                x.Id,
+                x.VehicleId,
+                x.CustomerId,
+                VehiclePlate = x.Vehicle.Plate,
+                CustomerName = x.Customer.FullName,
+                x.StartUtc,
+                x.EndUtc,
+                x.State,
+                x.TotalPrice
+            })
+            .ToListAsync();
+
+        _items = raw.Select(x => new RentalRow(
+            x.Id,
+            x.VehicleId,
+            x.CustomerId,
+            x.VehiclePlate,
+            x.CustomerName,
+            x.StartUtc.ToLocalTime(),
+            x.EndUtc.ToLocalTime(),
+            x.State,
+            x.TotalPrice)).ToList();
+    }
+
+    private void BeginEdit(RentalRow r)
+    {
+        _message = null;
+        _editingId = r.Id;
+        _editForm = new RentalEditForm
+        {
+            VehicleId = r.VehicleId,
+            CustomerId = r.CustomerId,
+            StartLocal = r.StartLocal,
+            EndLocal = r.EndLocal,
+            State = r.State
+        };
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _message = null;
+    }
+
+    private async Task AddAsync()
+    {
+        _message = null;
+        if (_model.EndLocal <= _model.StartLocal)
+        {
+            _message = "Bitiş tarihi başlangıçtan sonra olmalı.";
+            return;
+        }
+
+        var startUtc = DateTime.SpecifyKind(_model.StartLocal, DateTimeKind.Local).ToUniversalTime();
+        var endUtc = DateTime.SpecifyKind(_model.EndLocal, DateTimeKind.Local).ToUniversalTime();
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        if (await RentalScheduling.HasOverlapAsync(db, _model.VehicleId, startUtc, endUtc, excludeRentalId: null))
+        {
+            _message = "Bu araç için seçilen tarihlerde başka bir kiralama (taslak/onaylı/aktif) ile çakışma var.";
+            return;
+        }
+
+        var (_, disc, baseNet) = await PricingResolver.ComputeBaseRentalAsync(db, _model.VehicleId, startUtc, endUtc, campaignId: null);
+
+        db.Rentals.Add(new Rental
+        {
+            VehicleId = _model.VehicleId,
+            CustomerId = _model.CustomerId,
+            StartUtc = startUtc,
+            EndUtc = endUtc,
+            State = _model.State,
+            TotalPrice = baseNet,
+            DiscountAmount = disc
+        });
+
+        await db.SaveChangesAsync();
+        await ReloadRentalsAsync();
+        _message = "Kiralama kaydedildi.";
+    }
+
+    private async Task SaveEditAsync()
+    {
+        _message = null;
+        if (_editingId is null)
+        {
+            return;
+        }
+
+        if (_editForm.EndLocal <= _editForm.StartLocal)
+        {
+            _message = "Bitiş tarihi başlangıçtan sonra olmalı.";
+            return;
+        }
+
+        var startUtc = DateTime.SpecifyKind(_editForm.StartLocal, DateTimeKind.Local).ToUniversalTime();
+        var endUtc = DateTime.SpecifyKind(_editForm.EndLocal, DateTimeKind.Local).ToUniversalTime();
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        if (await RentalScheduling.HasOverlapAsync(db, _editForm.VehicleId, startUtc, endUtc, excludeRentalId: _editingId))
+        {
+            _message = "Bu araç için seçilen tarihlerde başka bir kiralama ile çakışma var.";
+            return;
+        }
+
+        var entity = await db.Rentals.FindAsync(_editingId.Value);
+        if (entity is null)
+        {
+            CancelEdit();
+            await ReloadRentalsAsync();
+            return;
+        }
+
+        var (_, disc, baseNet) = await PricingResolver.ComputeBaseRentalAsync(db, _editForm.VehicleId, startUtc, endUtc, entity.CampaignId);
+
+        entity.VehicleId = _editForm.VehicleId;
+        entity.CustomerId = _editForm.CustomerId;
+        entity.StartUtc = startUtc;
+        entity.EndUtc = endUtc;
+        entity.State = _editForm.State;
+        entity.TotalPrice = baseNet;
+        entity.DiscountAmount = disc;
+
+        await db.SaveChangesAsync();
+        _editingId = null;
+        await ReloadRentalsAsync();
+        _message = "Kiralama güncellendi.";
+    }
+
+    private async Task DeleteAsync(int id)
+    {
+        _message = null;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var r = await db.Rentals.FindAsync(id);
+        if (r is null)
+        {
+            return;
+        }
+
+        db.Rentals.Remove(r);
+        await db.SaveChangesAsync();
+        if (_editingId == id)
+        {
+            CancelEdit();
+        }
+
+        await ReloadRentalsAsync();
+        _message = "Kiralama silindi.";
+    }
+
+    private async Task PdfAsync(int rentalId)
+    {
+        _message = null;
+        try
+        {
+            var path = await PdfService.GenerateForRentalAsync(rentalId);
+            _message = "Sözleşme dosyası: " + path;
+        }
+        catch (Exception ex)
+        {
+            _message = ex.Message;
+        }
+
+        await ReloadRentalsAsync();
+    }
+
+    private sealed record VehicleOption(int Id, string Label);
+
+    private sealed record CustomerOption(int Id, string FullName);
+
+    private sealed record RentalRow(int Id, int VehicleId, int CustomerId, string VehiclePlate, string CustomerName, DateTime StartLocal, DateTime EndLocal, RentalState State, decimal? TotalPrice);
+
+    private sealed class RentalForm
+    {
+        [Range(1, int.MaxValue)]
+        public int VehicleId { get; set; }
+
+        [Range(1, int.MaxValue)]
+        public int CustomerId { get; set; }
+
+        public DateTime StartLocal { get; set; }
+        public DateTime EndLocal { get; set; }
+        public RentalState State { get; set; } = RentalState.Confirmed;
+    }
+
+    private sealed class RentalEditForm
+    {
+        [Range(1, int.MaxValue)]
+        public int VehicleId { get; set; }
+
+        [Range(1, int.MaxValue)]
+        public int CustomerId { get; set; }
+
+        public DateTime StartLocal { get; set; }
+        public DateTime EndLocal { get; set; }
+        public RentalState State { get; set; }
+    }
+}

@@ -1,0 +1,105 @@
+@page "/my-rentals"
+@attribute [Authorize(Roles = "Customer")]
+@rendermode InteractiveServer
+
+<PageTitle>Kiralamalarım</PageTitle>
+
+<h2>Kiralamalarım</h2>
+
+@if (_customerId is null)
+{
+    <div class="alert alert-warning">Müşteri kaydı bulunamadı.</div>
+}
+else if (_items is null)
+{
+    <p>Yükleniyor…</p>
+}
+else if (_items.Count == 0)
+{
+    <p>Henüz kiralama kaydınız yok.</p>
+}
+else
+{
+    <table class="table table-sm table-striped">
+        <thead>
+            <tr><th>Kayıt no</th><th>Araç</th><th>Başlangıç</th><th>Bitiş</th><th>Durum</th><th>Tutar</th><th>Sözleşme</th></tr>
+        </thead>
+        <tbody>
+            @foreach (var r in _items)
+            {
+                <tr>
+                    <td>@r.Id</td>
+                    <td>@r.VehicleLabel</td>
+                    <td>@r.StartLocal</td>
+                    <td>@r.EndLocal</td>
+                    <td>@TrLabels.RentalState(r.State)</td>
+                    <td>@(r.Total?.ToString("N2") ?? "—")</td>
+                    <td>
+                        @if (!string.IsNullOrEmpty(r.PdfUrl))
+                        {
+                            <a target="_blank" href="@r.PdfUrl">Sözleşme</a>
+                        }
+                        else
+                        {
+                            <span class="text-muted">—</span>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    [Inject] public IDbContextFactory<AppDbContext> DbFactory { get; set; } = default!;
+    [Inject] public AuthenticationStateProvider Auth { get; set; } = default!;
+
+    private int? _customerId;
+    private List<RentalRow>? _items;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = (await Auth.GetAuthenticationStateAsync()).User;
+        var uid = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (uid is null)
+        {
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _customerId = await db.Customers.AsNoTracking().Where(c => c.ApplicationUserId == uid).Select(c => (int?)c.Id).FirstOrDefaultAsync();
+        if (_customerId is null)
+        {
+            return;
+        }
+
+        var raw = await db.Rentals.AsNoTracking()
+            .Where(r => r.CustomerId == _customerId.Value)
+            .OrderByDescending(r => r.Id)
+            .Select(r => new
+            {
+                r.Id,
+                Label = r.Vehicle.Plate + " " + r.Vehicle.Brand,
+                r.StartUtc,
+                r.EndUtc,
+                r.State,
+                r.TotalPrice
+            })
+            .ToListAsync();
+
+        var pdfDocs = await db.ContractDocuments.AsNoTracking()
+            .OrderByDescending(c => c.CreatedUtc)
+            .Select(c => new { c.RentalId, c.PdfRelativePath })
+            .ToListAsync();
+        var pdfMap = pdfDocs.GroupBy(c => c.RentalId).ToDictionary(g => g.Key, g => g.First().PdfRelativePath);
+
+        _items = raw.Select(r =>
+        {
+            pdfMap.TryGetValue(r.Id, out var p);
+            return new RentalRow(r.Id, r.Label, r.StartUtc.ToLocalTime(), r.EndUtc.ToLocalTime(), r.State, r.TotalPrice,
+                string.IsNullOrEmpty(p) ? null : "/" + p.Replace('\\', '/'));
+        }).ToList();
+    }
+
+    private sealed record RentalRow(int Id, string VehicleLabel, DateTime StartLocal, DateTime EndLocal, RentalState State, decimal? Total, string? PdfUrl);
+}

@@ -1,0 +1,362 @@
+/* ——— Tasarım sistemi ——— */
+:root {
+    --app-font: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --app-bg: #f0f4f8;
+    --app-bg-accent: linear-gradient(135deg, #e0f2fe 0%, #f0fdf4 45%, #f8fafc 100%);
+    --app-surface: #ffffff;
+    --app-surface-2: rgba(255, 255, 255, 0.72);
+    --app-text: #0f172a;
+    --app-text-muted: #64748b;
+    --app-border: rgba(15, 23, 42, 0.08);
+    --app-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 12px 40px rgba(15, 23, 42, 0.06);
+    --app-shadow-lg: 0 25px 50px -12px rgba(15, 23, 42, 0.12);
+    --app-radius: 14px;
+    --app-radius-sm: 10px;
+    --app-accent: #0d9488;
+    --app-accent-hover: #0f766e;
+    --app-accent-soft: rgba(13, 148, 136, 0.12);
+    --app-accent-2: #2563eb;
+    --app-sidebar-from: #0c1222;
+    --app-sidebar-to: #134e4a;
+    --app-topbar-bg: rgba(255, 255, 255, 0.85);
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+html, body {
+    font-family: var(--app-font);
+    color: var(--app-text);
+    background: var(--app-bg);
+    background-image: var(--app-bg-accent);
+    background-attachment: fixed;
+    min-height: 100%;
+}
+
+a {
+    color: var(--app-accent-2);
+    text-decoration: none;
+    transition: color 0.15s ease;
+}
+
+a:hover {
+    color: #1d4ed8;
+    text-decoration: underline;
+}
+
+.btn-link {
+    color: var(--app-accent-2);
+}
+
+/* Birincil buton */
+.btn-primary {
+    color: #fff;
+    background: linear-gradient(165deg, var(--app-accent) 0%, #0f766e 100%);
+    border: none;
+    font-weight: 600;
+    padding: 0.5rem 1.15rem;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(13, 148, 136, 0.35);
+    transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
+}
+
+.btn-primary:hover {
+    color: #fff;
+    background: linear-gradient(165deg, #14b8a6 0%, var(--app-accent-hover) 100%);
+    filter: brightness(1.02);
+    box-shadow: 0 4px 16px rgba(13, 148, 136, 0.4);
+    transform: translateY(-1px);
+}
+
+.btn-outline-primary {
+    color: var(--app-accent);
+    border-color: rgba(13, 148, 136, 0.45);
+    font-weight: 600;
+    border-radius: 10px;
+    transition: all 0.15s ease;
+}
+
+.btn-outline-primary:hover {
+    color: #fff;
+    background: var(--app-accent);
+    border-color: var(--app-accent);
+    box-shadow: 0 4px 14px rgba(13, 148, 136, 0.25);
+}
+
+.btn-outline-secondary,
+.btn-secondary {
+    border-radius: 10px;
+    font-weight: 500;
+}
+
+.btn-sm {
+    border-radius: 8px;
+}
+
+.btn:focus, .btn:active:focus, .btn-link.nav-link:focus, .form-control:focus, .form-check-input:focus, .form-select:focus {
+    box-shadow: 0 0 0 3px var(--app-accent-soft);
+    border-color: var(--app-accent);
+}
+
+/* İçerik alanı */
+.content {
+    padding-top: 0.5rem;
+    width: 100%;
+}
+
+.content h1, .content h2 {
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--app-text);
+}
+
+.content h2 {
+    font-size: 1.65rem;
+    margin-bottom: 1rem;
+}
+
+.content .lead {
+    color: var(--app-text-muted);
+    font-weight: 500;
+}
+
+/* Tablolar */
+.content .table {
+    border-collapse: separate;
+    border-spacing: 0;
+    border-radius: var(--app-radius-sm);
+    overflow: hidden;
+    box-shadow: var(--app-shadow);
+    background: var(--app-surface);
+}
+
+.content .table thead th {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+    color: var(--app-text-muted);
+    background: #f8fafc;
+    border-bottom: 1px solid var(--app-border);
+    padding: 0.75rem 1rem;
+    white-space: nowrap;
+}
+
+.content .table tbody td {
+    padding: 0.65rem 1rem;
+    vertical-align: middle;
+    border-color: var(--app-border);
+}
+
+.content .table-striped > tbody > tr:nth-of-type(odd) > * {
+    background-color: rgba(248, 250, 252, 0.6);
+}
+
+/* Formlar */
+.form-control, .form-select {
+    border-radius: 10px;
+    border-color: rgba(15, 23, 42, 0.12);
+}
+
+.form-label {
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: var(--app-text);
+    margin-bottom: 0.35rem;
+}
+
+/* Uyarılar */
+.alert {
+    border: none;
+    border-radius: var(--app-radius-sm);
+    box-shadow: var(--app-shadow);
+}
+
+.alert-info {
+    background: linear-gradient(135deg, #ecfeff 0%, #f0f9ff 100%);
+    color: #0c4a6e;
+}
+
+.alert-warning {
+    background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+    color: #78350f;
+}
+
+.alert-danger {
+    background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+    color: #7f1d1d;
+}
+
+/* Ana sayfa kartları */
+.app-hero {
+    position: relative;
+    padding: 2.25rem 2rem;
+    border-radius: var(--app-radius);
+    background: linear-gradient(135deg, #0f766e 0%, #134e4a 40%, #0c4a6e 100%);
+    color: #fff;
+    box-shadow: var(--app-shadow-lg);
+    overflow: hidden;
+    margin-bottom: 2rem;
+}
+
+.app-hero::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 85% 20%, rgba(255,255,255,0.18) 0%, transparent 45%);
+    pointer-events: none;
+}
+
+.app-hero-inner {
+    position: relative;
+    z-index: 1;
+}
+
+.app-hero h1 {
+    color: #fff;
+    font-size: clamp(1.65rem, 4vw, 2.25rem);
+    margin-bottom: 0.5rem;
+}
+
+.app-hero .lead {
+    color: rgba(255, 255, 255, 0.88);
+    font-size: 1.05rem;
+    margin-bottom: 0;
+    max-width: 42rem;
+}
+
+.app-hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 0.35rem 0.75rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    margin-bottom: 1rem;
+}
+
+.app-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 1rem;
+}
+
+.app-card {
+    display: flex;
+    flex-direction: column;
+    padding: 1.35rem 1.25rem;
+    border-radius: var(--app-radius-sm);
+    background: var(--app-surface);
+    border: 1px solid var(--app-border);
+    box-shadow: var(--app-shadow);
+    transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+    text-decoration: none !important;
+    color: inherit !important;
+    min-height: 120px;
+}
+
+.app-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--app-shadow-lg);
+    border-color: rgba(13, 148, 136, 0.25);
+}
+
+.app-card-icon {
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.35rem;
+    margin-bottom: 0.75rem;
+    background: var(--app-accent-soft);
+}
+
+.app-card-title {
+    font-weight: 700;
+    font-size: 1.05rem;
+    margin-bottom: 0.25rem;
+    color: var(--app-text);
+}
+
+.app-card-desc {
+    font-size: 0.82rem;
+    color: var(--app-text-muted);
+    margin: 0;
+}
+
+/* Razor Pages (Login / Register) */
+.auth-page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1rem;
+    background: var(--app-bg);
+    background-image: var(--app-bg-accent);
+    background-attachment: fixed;
+}
+
+.auth-card {
+    width: 100%;
+    max-width: 420px;
+    padding: 2rem 2rem 1.75rem;
+    border-radius: var(--app-radius);
+    background: var(--app-surface);
+    box-shadow: var(--app-shadow-lg);
+    border: 1px solid var(--app-border);
+}
+
+.auth-card h2 {
+    font-weight: 700;
+    font-size: 1.5rem;
+    margin-bottom: 1.25rem;
+}
+
+h1:focus {
+    outline: none;
+}
+
+.valid.modified:not([type=checkbox]) {
+    outline: 1px solid #10b981;
+}
+
+.invalid {
+    outline: 1px solid #ef4444;
+}
+
+.validation-message {
+    color: #dc2626;
+    font-size: 0.875rem;
+}
+
+.blazor-error-boundary {
+    background: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTYiIGhlaWdodD0iNDkiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIG92ZXJmbG93PSJoaWRkZW4iPjxkZWZzPjxjbGlwUGF0aCBpZD0iY2xpcDAiPjxyZWN0IHg9IjIzNSIgeT0iNTEiIHdpZHRoPSI1NiIgaGVpZ2h0PSI0OSIvPjwvY2xpcFBhdGg+PC9kZWZzPjxnIGNsaXAtcGF0aD0idXJsKCNjbGlwMCkiIHRyYW5zZm9ybT0idHJhbnNsYXRlKC0yMzUgLTUxKSI+PHBhdGggZD0iTTI2My41MDYgNTFDMjY0LjcxNyA1MSAyNjUuODEzIDUxLjQ4MzcgMjY2LjYwNiA1Mi4yNjU4TDI2Ny4wNTIgNTIuNzk4NyAyNjcuNTM5IDUzLjYyODMgMjkwLjE4NSA5Mi4xODMxIDI5MC41NDUgOTIuNzk1IDI5MC42NTYgOTIuOTk2QzI5MC44NzcgOTMuNTEzIDI5MSA5NC4wODE1IDI5MSA5NC42NzgyIDI5MSA5Ny4wNjUxIDI4OS4wMzggOTkgMjg2LjYxNyA5OUwyNDAuMzgzIDk5QzIzNy45NjMgOTkgMjM2IDk3LjA2NTEgMjM2IDk0LjY3ODIgMjM2IDk0LjM3OTkgMjM2LjAzMSA5NC4wODg2IDIzNi4wODkgOTMuODA3MkwyMzYuMzM4IDkzLjAxNjIgMjM2Ljg1OCA5Mi4xMzE0IDI1OS40NzMgNTMuNjI5NCAyNTkuOTYxIDUyLjc5ODUgMjYwLjQwNyA1Mi4yNjU4QzI2MS4yIDUxLjQ4MzcgMjYyLjI5NiA1MSAyNjMuNTA2IDUxWk0yNjMuNTg2IDY2LjAxODNDMjYwLjczNyA2Ni4wMTgzIDI1OS4zMTMgNjcuMTI0NSAyNTkuMzEzIDY5LjMzNyAyNTkuMzEzIDY5LjYxMDIgMjU5LjMzMiA2OS44NjA4IDI1OS4zNzEgNzAuMDg4N0wyNjEuNzk1IDg0LjAxNjEgMjY1LjM4IDg0LjAxNjEgMjY3LjgyMSA2OS43NDc1QzI2Ny44NiA2OS43MzA5IDI2Ny44NzkgNjkuNTg3NyAyNjcuODc5IDY5LjMxNzkgMjY3Ljg3OSA2Ny4xMTgyIDI2Ni40NDggNjYuMDE4MyAyNjMuNTg2IDY2LjAxODNaTTI2My41NzYgODYuMDU0N0MyNjEuMDQ5IDg2LjA1NDcgMjU5Ljc4NiA4Ny4zMDA1IDI1OS43ODYgODkuNzkyMSAyNTkuNzg2IDkyLjI4MzcgMjYxLjA0OSA5My41Mjk1IDI2My41NzYgOTMuNTI5NSAyNjYuMTE2IDkzLjUyOTUgMjY3LjM4NyA5Mi4yODM3IDI2Ny4zODcgODkuNzkyMSAyNjcuMzg3IDg3LjMwMDUgMjY2LjExNiA4Ni4wNTQ3IDI2My41NzYgODYuMDU0N1oiIGZpbGw9IiNGRkU1MDAiIGZpbGwtcnVsZT0iZXZlbm9kZCIvPjwvZz48L3N2Zz4=) no-repeat 1rem/1.8rem, linear-gradient(135deg, #b91c1c 0%, #7f1d1d 100%);
+    padding: 1rem 1rem 1rem 3.7rem;
+    color: white;
+    border-radius: var(--app-radius-sm);
+}
+
+.blazor-error-boundary::after {
+    content: "Bir hata oluştu.";
+}
+
+.darker-border-checkbox.form-check-input {
+    border-color: #94a3b8;
+}
+
+.form-floating > .form-control-plaintext::placeholder, .form-floating > .form-control::placeholder {
+    color: var(--app-text-muted);
+    text-align: end;
+}
+
+.form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
+    text-align: start;
+}

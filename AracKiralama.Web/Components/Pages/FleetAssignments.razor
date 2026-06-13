@@ -1,0 +1,228 @@
+@page "/fleet-assignments"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+<PageTitle>Filo atamaları</PageTitle>
+
+<h2>Filo atamaları</h2>
+
+@if (_vehicles is null || _vehicles.Count == 0)
+{
+    <div class="alert alert-warning">Önce araç ekleyin.</div>
+}
+else
+{
+    <AuthorizeView Policy="@AppPolicies.CanWrite">
+        <Authorized Context="auth">
+            <EditForm Model="_model" OnValidSubmit="AddAsync" FormName="fleetForm">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+                <div class="row g-2 align-items-end mb-3">
+                    <div class="col-md-3">
+                        <label class="form-label">Araç</label>
+                        <InputSelect class="form-select" @bind-Value="_model.VehicleId">
+                            @foreach (var v in _vehicles)
+                            {
+                                <option value="@v.Id">@v.Label</option>
+                            }
+                        </InputSelect>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Çalışan / departman</label>
+                        <InputText class="form-control" @bind-Value="_model.TargetName" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Başlangıç (yerel)</label>
+                        <InputDate class="form-control" Type="InputDateType.DateTimeLocal" @bind-Value="_model.StartLocal" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Bitiş (yerel)</label>
+                        <InputDate class="form-control" Type="InputDateType.DateTimeLocal" @bind-Value="_model.EndLocal" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Not</label>
+                        <InputText class="form-control" @bind-Value="_model.Notes" />
+                    </div>
+                    <div class="col-12 mt-2">
+                        <button class="btn btn-primary" type="submit">Ekle</button>
+                    </div>
+                </div>
+            </EditForm>
+        </Authorized>
+    </AuthorizeView>
+}
+
+@if (_message is not null)
+{
+    <div class="alert alert-info">@_message</div>
+}
+
+@if (_items is null)
+{
+    <p>Yükleniyor…</p>
+}
+else
+{
+    <table class="table table-striped table-sm">
+        <thead>
+            <tr>
+                <th>Id</th>
+                <th>Araç</th>
+                <th>Hedef</th>
+                <th>Başlangıç</th>
+                <th>Bitiş</th>
+                <th>Not</th>
+                <th>İşlem</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var x in _items)
+            {
+                <tr>
+                    <td>@x.Id</td>
+                    <td>@x.VehicleLabel</td>
+                    <td>@x.TargetName</td>
+                    <td>@x.StartLocal</td>
+                    <td>@x.EndLocal</td>
+                    <td>@x.Notes</td>
+                    <td>
+                        <AuthorizeView Policy="@AppPolicies.CanWrite">
+                            <Authorized Context="auth">
+                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(x.Id)">Sil</button>
+                            </Authorized>
+                            <NotAuthorized>
+                                <span class="text-muted">—</span>
+                            </NotAuthorized>
+                        </AuthorizeView>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    [Inject] public IDbContextFactory<AppDbContext> DbFactory { get; set; } = default!;
+
+    private List<VehicleOption>? _vehicles;
+    private List<FleetRow>? _items;
+    private FleetForm _model = new();
+    private string? _message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _vehicles = await db.Vehicles.AsNoTracking()
+            .OrderBy(x => x.Plate)
+            .Select(x => new VehicleOption(x.Id, x.Plate + " — " + x.Brand + " " + x.Model))
+            .ToListAsync();
+
+        if (_vehicles.Count > 0 && _model.VehicleId == 0)
+        {
+            _model.VehicleId = _vehicles[0].Id;
+        }
+
+        var now = DateTime.Now;
+        _model.StartLocal = now;
+        _model.EndLocal = now.AddDays(1);
+
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var raw = await db.FleetAssignments.AsNoTracking()
+            .OrderByDescending(x => x.Id)
+            .Select(x => new
+            {
+                x.Id,
+                VehicleLabel = x.Vehicle.Plate + " " + x.Vehicle.Brand + " " + x.Vehicle.Model,
+                x.TargetName,
+                x.StartUtc,
+                x.EndUtc,
+                x.Notes
+            })
+            .ToListAsync();
+
+        _items = raw.Select(x => new FleetRow(
+            x.Id,
+            x.VehicleLabel,
+            x.TargetName,
+            x.StartUtc.ToLocalTime(),
+            x.EndUtc.HasValue ? x.EndUtc.Value.ToLocalTime() : null,
+            x.Notes)).ToList();
+    }
+
+    private async Task AddAsync()
+    {
+        _message = null;
+        if (string.IsNullOrWhiteSpace(_model.TargetName))
+        {
+            _message = "Hedef adı zorunlu.";
+            return;
+        }
+
+        if (_model.EndLocal <= _model.StartLocal)
+        {
+            _message = "Bitiş, başlangıçtan sonra olmalı.";
+            return;
+        }
+
+        var startUtc = DateTime.SpecifyKind(_model.StartLocal, DateTimeKind.Local).ToUniversalTime();
+        var endUtc = DateTime.SpecifyKind(_model.EndLocal, DateTimeKind.Local).ToUniversalTime();
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.FleetAssignments.Add(new FleetAssignment
+        {
+            VehicleId = _model.VehicleId,
+            TargetName = _model.TargetName.Trim(),
+            StartUtc = startUtc,
+            EndUtc = endUtc,
+            Notes = string.IsNullOrWhiteSpace(_model.Notes) ? null : _model.Notes.Trim()
+        });
+
+        await db.SaveChangesAsync();
+        _model = new FleetForm
+        {
+            VehicleId = _vehicles!.First().Id,
+            StartLocal = DateTime.Now,
+            EndLocal = DateTime.Now.AddDays(1)
+        };
+        await ReloadAsync();
+        _message = "Atama kaydedildi.";
+    }
+
+    private async Task DeleteAsync(int id)
+    {
+        _message = null;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var row = await db.FleetAssignments.FindAsync(id);
+        if (row is null)
+        {
+            return;
+        }
+
+        db.FleetAssignments.Remove(row);
+        await db.SaveChangesAsync();
+        await ReloadAsync();
+        _message = "Atama silindi.";
+    }
+
+    private sealed record VehicleOption(int Id, string Label);
+
+    private sealed record FleetRow(int Id, string VehicleLabel, string TargetName, DateTime StartLocal, DateTime? EndLocal, string? Notes);
+
+    private sealed class FleetForm
+    {
+        [Range(1, int.MaxValue)]
+        public int VehicleId { get; set; }
+
+        [Required]
+        public string TargetName { get; set; } = string.Empty;
+
+        public DateTime StartLocal { get; set; }
+        public DateTime EndLocal { get; set; }
+        public string? Notes { get; set; }
+    }
+}

@@ -1,0 +1,417 @@
+@page "/staff-billing"
+@attribute [Authorize(Roles = "Admin,Operator,ReadOnly")]
+@rendermode InteractiveServer
+
+<PageTitle>Fatura ve ödeme</PageTitle>
+
+<h2>Fatura / ödeme</h2>
+
+<h5 class="mt-3">Faturasız kiralamalar</h5>
+@if (_rentalsNoInv is null)
+{
+    <p>Yükleniyor…</p>
+}
+else if (_rentalsNoInv.Count == 0)
+{
+    <p class="text-muted">Faturalanacak bekleyen kiralama yok.</p>
+}
+else
+{
+    <table class="table table-sm">
+        <thead><tr><th>Kiralama</th><th>Müşteri</th><th>Tutar</th><th></th></tr></thead>
+        <tbody>
+            @foreach (var r in _rentalsNoInv)
+            {
+                <tr>
+                    <td>#@r.Id</td>
+                    <td>@r.Customer</td>
+                    <td>@(r.Total?.ToString("N2") ?? "—")</td>
+                    <td>
+                        <AuthorizeView Policy="@AppPolicies.CanWrite">
+                            <Authorized Context="rentInvCtx">
+                                <button type="button" class="btn btn-sm btn-primary" @onclick="() => CreateInvoiceAsync(r.Id)">Fatura kes</button>
+                            </Authorized>
+                        </AuthorizeView>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<h5 class="mt-4">Faturalar</h5>
+@if (_invoices is null)
+{
+    <p>Yükleniyor…</p>
+}
+else if (_invoices.Count == 0)
+{
+    <p class="text-muted">Henüz fatura yok.</p>
+}
+else
+{
+    <table class="table table-sm table-striped">
+        <thead><tr><th>Fatura no</th><th>Kiralama</th><th>Toplam</th><th>Ödenen</th><th>Durum</th><th>Detay</th><th>Ödeme</th></tr></thead>
+        <tbody>
+            @foreach (var i in _invoices)
+            {
+                var payForm = GetPayModel(i.Id);
+                <tr @key="i.Id">
+                    <td>@i.Number</td>
+                    <td>#@i.RentalId</td>
+                    <td>@i.Total.ToString("N2")</td>
+                    <td>@i.Paid.ToString("N2")</td>
+                    <td>@TrLabels.InvoiceStatus(i.Status)</td>
+                    <td>
+                        <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => OpenDetailAsync(i.Id)">Detay</button>
+                    </td>
+                    <td style="min-width: 280px;">
+                        <AuthorizeView Policy="@AppPolicies.CanWrite">
+                            <Authorized Context="payCtx">
+                                @if (i.Status != InvoiceStatus.Paid && i.Remaining > 0.009m)
+                                {
+                                    <EditForm Model="payForm" OnValidSubmit="@(() => PayAsync(i.Id))" FormName="@($"pay{i.Id}")">
+                                        <div class="input-group input-group-sm">
+                                            <InputNumber class="form-control" @bind-Value="payForm.Amount" />
+                                            <InputSelect class="form-select" style="max-width:9rem" @bind-Value="payForm.Method">
+                                                @foreach (var m in Enum.GetValues<PaymentMethod>())
+                                                {
+                                                    <option value="@m">@TrLabels.PaymentMethod(m)</option>
+                                                }
+                                            </InputSelect>
+                                            <button class="btn btn-outline-secondary" type="submit">Ödeme ekle</button>
+                                        </div>
+                                    </EditForm>
+                                }
+                                else
+                                {
+                                    <span class="text-muted small">—</span>
+                                }
+                            </Authorized>
+                        </AuthorizeView>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@if (_showDetail && _detail is not null)
+{
+    var d = _detail;
+    <div class="modal d-block" tabindex="-1" style="background: rgba(0,0,0,.45);" @onclick="CloseDetail">
+        <div class="modal-dialog modal-dialog-scrollable modal-lg" @onclick:stopPropagation="true">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Fatura @d.Number</h5>
+                    <button type="button" class="btn-close" @onclick="CloseDetail"></button>
+                </div>
+                <div class="modal-body">
+                    <h6 class="text-muted small">Genel</h6>
+                    <dl class="row small mb-3">
+                        <dt class="col-sm-4">Kesim (UTC)</dt>
+                        <dd class="col-sm-8">@d.IssueDateUtc.ToString("u")</dd>
+                        <dt class="col-sm-4">Durum</dt>
+                        <dd class="col-sm-8">@TrLabels.InvoiceStatus(d.Status)</dd>
+                        <dt class="col-sm-4">Ara toplam</dt>
+                        <dd class="col-sm-8">@d.SubTotal.ToString("N2") ₺</dd>
+                        <dt class="col-sm-4">KDV oranı</dt>
+                        <dd class="col-sm-8">@((d.TaxRate * 100).ToString("N0"))%</dd>
+                        <dt class="col-sm-4">KDV tutarı</dt>
+                        <dd class="col-sm-8">@d.TaxAmount.ToString("N2") ₺</dd>
+                        <dt class="col-sm-4">Genel toplam</dt>
+                        <dd class="col-sm-8 fw-semibold">@d.Total.ToString("N2") ₺</dd>
+                        <dt class="col-sm-4">Ödenen</dt>
+                        <dd class="col-sm-8">@d.Paid.ToString("N2") ₺</dd>
+                        <dt class="col-sm-4">Kalan</dt>
+                        <dd class="col-sm-8">@d.Remaining.ToString("N2") ₺</dd>
+                    </dl>
+
+                    <h6 class="text-muted small">Kiralama</h6>
+                    <dl class="row small mb-3">
+                        <dt class="col-sm-4">Kayıt no</dt>
+                        <dd class="col-sm-8">#@d.RentalId</dd>
+                        <dt class="col-sm-4">Müşteri</dt>
+                        <dd class="col-sm-8">@d.CustomerName</dd>
+                        <dt class="col-sm-4">Araç</dt>
+                        <dd class="col-sm-8">@d.VehicleLabel</dd>
+                        <dt class="col-sm-4">Başlangıç (yerel)</dt>
+                        <dd class="col-sm-8">@d.RentalStartLocal.ToString("g")</dd>
+                        <dt class="col-sm-4">Bitiş (yerel)</dt>
+                        <dd class="col-sm-8">@d.RentalEndLocal.ToString("g")</dd>
+                        <dt class="col-sm-4">Kiralama durumu</dt>
+                        <dd class="col-sm-8">@TrLabels.RentalState(d.RentalState)</dd>
+                        <dt class="col-sm-4">Sözleşme tutarı (kayıt)</dt>
+                        <dd class="col-sm-8">@(d.RentalTotalPrice?.ToString("N2") ?? "—") ₺</dd>
+                    </dl>
+
+                    @if (d.ExtraLines.Count > 0)
+                    {
+                        <h6 class="text-muted small">Ek ürün satırları</h6>
+                        <table class="table table-sm mb-3">
+                            <thead><tr><th>Ürün</th><th class="text-end">Adet</th><th class="text-end">Birim</th><th class="text-end">Satır</th></tr></thead>
+                            <tbody>
+                                @foreach (var x in d.ExtraLines)
+                                {
+                                    <tr>
+                                        <td>@x.ProductName</td>
+                                        <td class="text-end">@x.Quantity</td>
+                                        <td class="text-end">@x.UnitPrice.ToString("N2")</td>
+                                        <td class="text-end">@x.LineTotal.ToString("N2")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+
+                    <h6 class="text-muted small">Ödemeler</h6>
+                    @if (d.Payments.Count == 0)
+                    {
+                        <p class="small text-muted">Henüz ödeme kaydı yok.</p>
+                    }
+                    else
+                    {
+                        <table class="table table-sm mb-0">
+                            <thead><tr><th>Tarih (yerel)</th><th>Yöntem</th><th class="text-end">Tutar</th><th>Not</th></tr></thead>
+                            <tbody>
+                                @foreach (var p in d.Payments)
+                                {
+                                    <tr>
+                                        <td>@p.PaidLocal.ToString("g")</td>
+                                        <td>@TrLabels.PaymentMethod(p.Method)</td>
+                                        <td class="text-end">@p.Amount.ToString("N2") ₺</td>
+                                        <td class="small">@(p.ReferenceNote ?? "—")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseDetail">Kapat</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_message is not null)
+{
+    <div class="alert alert-info">@_message</div>
+}
+
+@code {
+    [Inject] public IDbContextFactory<AppDbContext> DbFactory { get; set; } = default!;
+    private List<RentalLite>? _rentalsNoInv;
+    private List<InvLite>? _invoices;
+    private readonly Dictionary<int, PayForm> _payForms = new();
+    private string? _message;
+    private bool _showDetail;
+    private InvoiceDetailVm? _detail;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private PayForm GetPayModel(int invoiceId)
+    {
+        if (!_payForms.TryGetValue(invoiceId, out var f))
+        {
+            f = new PayForm { Amount = 0, Method = PaymentMethod.Cash };
+            _payForms[invoiceId] = f;
+        }
+
+        return f;
+    }
+
+    private async Task ReloadAsync()
+    {
+        _message = null;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var invRentalIds = await db.Invoices.AsNoTracking().Select(i => i.RentalId).ToListAsync();
+        _rentalsNoInv = await db.Rentals.AsNoTracking()
+            .Where(r => !invRentalIds.Contains(r.Id))
+            .OrderByDescending(r => r.Id)
+            .Take(50)
+            .Select(r => new RentalLite(r.Id, r.Customer.FullName, r.TotalPrice))
+            .ToListAsync();
+
+        var invRows = await db.Invoices.AsNoTracking()
+            .OrderByDescending(i => i.Id)
+            .Take(50)
+            .Select(i => new { i.Id, i.InvoiceNumber, i.RentalId, i.Total, i.Status })
+            .ToListAsync();
+
+        var paidByInv = await db.Payments.AsNoTracking()
+            .GroupBy(p => p.InvoiceId)
+            .Select(g => new { InvoiceId = g.Key, Sum = g.Sum(x => x.Amount) })
+            .ToListAsync();
+        var paidMap = paidByInv.ToDictionary(x => x.InvoiceId, x => x.Sum);
+
+        _invoices = invRows.Select(i =>
+        {
+            paidMap.TryGetValue(i.Id, out var paid);
+            var remaining = i.Total - paid;
+            return new InvLite(i.Id, i.InvoiceNumber, i.RentalId, i.Total, i.Status, paid, remaining);
+        }).ToList();
+
+        foreach (var inv in _invoices)
+        {
+            var pf = GetPayModel(inv.Id);
+            pf.Amount = inv.Remaining > 0 ? Math.Round(inv.Remaining, 2) : 0;
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task CreateInvoiceAsync(int rentalId)
+    {
+        _message = null;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var created = await InvoiceBilling.CreateInvoiceForRentalIfMissingAsync(db, rentalId);
+        if (created is null)
+        {
+            if (await db.Invoices.AnyAsync(i => i.RentalId == rentalId))
+            {
+                _message = "Bu kiralama için fatura zaten var.";
+            }
+
+            await ReloadAsync();
+            return;
+        }
+
+        await ReloadAsync();
+        _message = "Fatura oluşturuldu.";
+    }
+
+    private async Task OpenDetailAsync(int invoiceId)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var inv = await db.Invoices.AsNoTracking()
+            .Include(i => i.Payments)
+            .Include(i => i.Rental).ThenInclude(r => r.Customer)
+            .Include(i => i.Rental).ThenInclude(r => r.Vehicle)
+            .Include(i => i.Rental).ThenInclude(r => r.ExtraLines).ThenInclude(l => l.ExtraProduct)
+            .FirstOrDefaultAsync(i => i.Id == invoiceId);
+        if (inv is null)
+        {
+            return;
+        }
+
+        var r = inv.Rental;
+        var paid = inv.Payments.Sum(p => p.Amount);
+        var extraVms = r.ExtraLines
+            .Select(l => new ExtraLineVm(l.ExtraProduct.Name, l.Quantity, l.UnitPrice, l.LineTotal))
+            .ToList();
+        var payVms = inv.Payments
+            .OrderByDescending(p => p.PaidUtc)
+            .Select(p => new PaymentLineVm(p.Amount, p.Method, p.PaidUtc.ToLocalTime(), p.ReferenceNote))
+            .ToList();
+
+        _detail = new InvoiceDetailVm(
+            inv.Id,
+            inv.InvoiceNumber,
+            inv.IssueDateUtc,
+            inv.SubTotal,
+            inv.TaxRate,
+            inv.TaxAmount,
+            inv.Total,
+            paid,
+            inv.Total - paid,
+            inv.Status,
+            r.Id,
+            r.Customer.FullName,
+            r.Vehicle.Plate + " " + r.Vehicle.Brand + " " + r.Vehicle.Model,
+            r.StartUtc.ToLocalTime(),
+            r.EndUtc.ToLocalTime(),
+            r.State,
+            r.TotalPrice,
+            extraVms,
+            payVms);
+        _showDetail = true;
+    }
+
+    private void CloseDetail()
+    {
+        _showDetail = false;
+        _detail = null;
+    }
+
+    private async Task PayAsync(int invoiceId)
+    {
+        _message = null;
+        var form = GetPayModel(invoiceId);
+        if (form.Amount <= 0)
+        {
+            _message = "Ödeme tutarı sıfırdan büyük olmalı.";
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var inv = await db.Invoices.FirstOrDefaultAsync(i => i.Id == invoiceId);
+        if (inv is null)
+        {
+            return;
+        }
+
+        var paidBefore = await db.Payments.Where(p => p.InvoiceId == invoiceId).SumAsync(p => p.Amount);
+        if (paidBefore + form.Amount > inv.Total + 0.02m)
+        {
+            _message = "Ödeme toplamı fatura tutarını aşamaz.";
+            return;
+        }
+
+        db.Payments.Add(new Payment
+        {
+            InvoiceId = invoiceId,
+            Amount = form.Amount,
+            Method = form.Method,
+            PaidUtc = DateTime.UtcNow
+        });
+
+        var paidTotal = paidBefore + form.Amount;
+        if (paidTotal >= inv.Total - 0.01m)
+        {
+            inv.Status = InvoiceStatus.Paid;
+        }
+
+        await db.SaveChangesAsync();
+        await ReloadAsync();
+        _message = "Ödeme kaydedildi.";
+        if (_showDetail && _detail?.Id == invoiceId)
+        {
+            await OpenDetailAsync(invoiceId);
+        }
+    }
+
+    private sealed record RentalLite(int Id, string Customer, decimal? Total);
+    private sealed record InvLite(int Id, string Number, int RentalId, decimal Total, InvoiceStatus Status, decimal Paid, decimal Remaining);
+
+    private sealed record ExtraLineVm(string ProductName, int Quantity, decimal UnitPrice, decimal LineTotal);
+    private sealed record PaymentLineVm(decimal Amount, PaymentMethod Method, DateTime PaidLocal, string? ReferenceNote);
+
+    private sealed record InvoiceDetailVm(
+        int Id,
+        string Number,
+        DateTime IssueDateUtc,
+        decimal SubTotal,
+        decimal TaxRate,
+        decimal TaxAmount,
+        decimal Total,
+        decimal Paid,
+        decimal Remaining,
+        InvoiceStatus Status,
+        int RentalId,
+        string CustomerName,
+        string VehicleLabel,
+        DateTime RentalStartLocal,
+        DateTime RentalEndLocal,
+        RentalState RentalState,
+        decimal? RentalTotalPrice,
+        IReadOnlyList<ExtraLineVm> ExtraLines,
+        IReadOnlyList<PaymentLineVm> Payments);
+
+    private sealed class PayForm
+    {
+        public decimal Amount { get; set; }
+        public PaymentMethod Method { get; set; }
+    }
+}

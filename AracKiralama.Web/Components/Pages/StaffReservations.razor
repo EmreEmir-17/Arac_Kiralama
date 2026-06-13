@@ -1,0 +1,268 @@
+@page "/staff-reservations"
+@attribute [Authorize(Roles = "Admin,Operator,ReadOnly")]
+@rendermode InteractiveServer
+
+<PageTitle>Rezervasyonlar (personel)</PageTitle>
+
+<h2>Rezervasyonlar</h2>
+
+@if (_message is not null)
+{
+    <div class="alert alert-info">@_message</div>
+}
+
+@if (_editId is int editId && _editForm is not null)
+{
+    <AuthorizeView Policy="@AppPolicies.CanWrite">
+        <Authorized Context="auth">
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Rezervasyon #@editId — tarih güncelle</span>
+                    <button type="button" class="btn btn-sm btn-secondary" @onclick="CancelEdit">Vazgeç</button>
+                </div>
+                <div class="card-body">
+                    <EditForm Model="_editForm" OnValidSubmit="SaveReservationAsync" FormName="staffResEdit">
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-4">
+                                <label class="form-label">Başlangıç</label>
+                                <InputDate class="form-control" Type="InputDateType.DateTimeLocal" @bind-Value="_editForm.StartLocal" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Bitiş</label>
+                                <InputDate class="form-control" Type="InputDateType.DateTimeLocal" @bind-Value="_editForm.EndLocal" />
+                            </div>
+                            <div class="col-md-4">
+                                <button class="btn btn-primary" type="submit">Kaydet ve tutarı yenile</button>
+                            </div>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </Authorized>
+    </AuthorizeView>
+}
+
+@if (_items is null)
+{
+    <p>Yükleniyor…</p>
+}
+else
+{
+    <table class="table table-sm table-striped">
+        <thead>
+            <tr><th>Kayıt no</th><th>Müşteri</th><th>Araç</th><th>Başlangıç</th><th>Bitiş</th><th>Durum</th><th>Tahmini</th><th></th></tr>
+        </thead>
+        <tbody>
+            @foreach (var r in _items)
+            {
+                <tr>
+                    <td>@r.Id</td>
+                    <td>@r.CustomerName</td>
+                    <td>@r.VehicleLabel</td>
+                    <td>@r.StartLocal</td>
+                    <td>@r.EndLocal</td>
+                    <td>@TrLabels.ReservationState(r.State)</td>
+                    <td>@(r.Estimated?.ToString("N2") ?? "—")</td>
+                    <td>
+                        <AuthorizeView Policy="@AppPolicies.CanWrite">
+                            <Authorized Context="auth">
+                                @if (r.State == ReservationState.Pending || r.State == ReservationState.Confirmed)
+                                {
+                                    <button type="button" class="btn btn-sm btn-outline-secondary me-1" @onclick="() => BeginEdit(r)">Tarih</button>
+                                    <button type="button" class="btn btn-sm btn-success" @onclick="() => ConvertAsync(r.Id)">Kiralamaya çevir</button>
+                                }
+                            </Authorized>
+                        </AuthorizeView>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    [Inject] public IDbContextFactory<AppDbContext> DbFactory { get; set; } = default!;
+    private List<Row>? _items;
+    private string? _message;
+    private int? _editId;
+    private ResEditForm? _editForm;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private void BeginEdit(Row r)
+    {
+        if (r.State != ReservationState.Pending && r.State != ReservationState.Confirmed)
+        {
+            return;
+        }
+
+        _message = null;
+        _editId = r.Id;
+        _editForm = new ResEditForm
+        {
+            StartLocal = r.StartLocal,
+            EndLocal = r.EndLocal
+        };
+    }
+
+    private void CancelEdit()
+    {
+        _editId = null;
+        _editForm = null;
+    }
+
+    private async Task SaveReservationAsync()
+    {
+        if (_editId is null || _editForm is null)
+        {
+            return;
+        }
+
+        _message = null;
+        if (_editForm.EndLocal <= _editForm.StartLocal)
+        {
+            _message = "Bitiş başlangıçtan sonra olmalı.";
+            return;
+        }
+
+        var startUtc = DateTime.SpecifyKind(_editForm.StartLocal, DateTimeKind.Local).ToUniversalTime();
+        var endUtc = DateTime.SpecifyKind(_editForm.EndLocal, DateTimeKind.Local).ToUniversalTime();
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var res = await db.Reservations
+            .Include(x => x.ExtraLines)
+            .FirstOrDefaultAsync(x => x.Id == _editId.Value);
+        if (res is null || res.State == ReservationState.ConvertedToRental || res.State == ReservationState.Cancelled)
+        {
+            CancelEdit();
+            await ReloadAsync();
+            return;
+        }
+
+        if (await ReservationScheduling.HasOverlapAsync(db, res.VehicleId, startUtc, endUtc, res.Id))
+        {
+            _message = "Bu araç için tarihlerde başka bir rezervasyon var.";
+            return;
+        }
+
+        if (await RentalScheduling.HasOverlapAsync(db, res.VehicleId, startUtc, endUtc, null))
+        {
+            _message = "Bu araç için tarihlerde kiralama çakışması var.";
+            return;
+        }
+
+        res.StartUtc = startUtc;
+        res.EndUtc = endUtc;
+
+        var extrasSum = res.ExtraLines.Sum(x => x.LineTotal);
+        var (_, _, baseNet) = await PricingResolver.ComputeBaseRentalAsync(db, res.VehicleId, startUtc, endUtc, res.CampaignId);
+        res.EstimatedTotal = baseNet + extrasSum;
+
+        await db.SaveChangesAsync();
+        CancelEdit();
+        await ReloadAsync();
+        _message = "Rezervasyon güncellendi; müşteri listesini yenilediğinde yeni tarihleri görür.";
+    }
+
+    private async Task ReloadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var raw = await db.Reservations.AsNoTracking()
+            .OrderByDescending(r => r.Id)
+            .Select(r => new
+            {
+                r.Id,
+                CustomerName = r.Customer.FullName,
+                VehicleLabel = r.Vehicle.Plate + " " + r.Vehicle.Brand,
+                r.StartUtc,
+                r.EndUtc,
+                r.State,
+                r.EstimatedTotal
+            })
+            .ToListAsync();
+
+        _items = raw.Select(r => new Row(
+            r.Id,
+            r.CustomerName,
+            r.VehicleLabel,
+            r.StartUtc.ToLocalTime(),
+            r.EndUtc.ToLocalTime(),
+            r.State,
+            r.EstimatedTotal)).ToList();
+    }
+
+    private async Task ConvertAsync(int id)
+    {
+        _message = null;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var res = await db.Reservations
+            .Include(r => r.Vehicle)
+            .Include(r => r.ExtraLines)
+            .FirstOrDefaultAsync(r => r.Id == id);
+        if (res is null || res.State == ReservationState.ConvertedToRental)
+        {
+            return;
+        }
+
+        if (await RentalScheduling.HasOverlapAsync(db, res.VehicleId, res.StartUtc, res.EndUtc, null))
+        {
+            _message = "Bu tarihlerde kiralama çakışması var; önce çakışmayı giderin.";
+            return;
+        }
+
+        if (await db.Rentals.AnyAsync(r => r.ReservationId == id))
+        {
+            _message = "Bu rezervasyon zaten kiralamaya bağlı.";
+            return;
+        }
+
+        Campaign? camp = null;
+        if (res.CampaignId is not null)
+        {
+            camp = await db.Campaigns.FindAsync(res.CampaignId.Value);
+        }
+
+        var extrasSum = res.ExtraLines.Sum(x => x.LineTotal);
+        var (_, disc, baseNet) = await PricingResolver.ComputeBaseRentalAsync(db, res.VehicleId, res.StartUtc, res.EndUtc, res.CampaignId);
+
+        var rental = new Rental
+        {
+            ReservationId = res.Id,
+            VehicleId = res.VehicleId,
+            CustomerId = res.CustomerId,
+            StartUtc = res.StartUtc,
+            EndUtc = res.EndUtc,
+            State = RentalState.Confirmed,
+            CampaignId = res.CampaignId,
+            DiscountAmount = disc,
+            TotalPrice = baseNet
+        };
+        db.Rentals.Add(rental);
+        res.State = ReservationState.ConvertedToRental;
+        await db.SaveChangesAsync();
+
+        foreach (var line in res.ExtraLines)
+        {
+            db.RentalExtraLines.Add(new RentalExtraLine
+            {
+                RentalId = rental.Id,
+                ExtraProductId = line.ExtraProductId,
+                Quantity = line.Quantity,
+                UnitPrice = line.UnitPrice,
+                LineTotal = line.LineTotal
+            });
+        }
+
+        await db.SaveChangesAsync();
+        await ReloadAsync();
+        _message = "Kiralama oluşturuldu.";
+    }
+
+    private sealed record Row(int Id, string CustomerName, string VehicleLabel, DateTime StartLocal, DateTime EndLocal, ReservationState State, decimal? Estimated);
+
+    private sealed class ResEditForm
+    {
+        public DateTime StartLocal { get; set; }
+        public DateTime EndLocal { get; set; }
+    }
+}

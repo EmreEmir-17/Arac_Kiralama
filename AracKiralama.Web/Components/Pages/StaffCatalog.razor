@@ -1,0 +1,154 @@
+@page "/staff-catalog"
+@attribute [Authorize(Roles = "Admin,Operator,ReadOnly")]
+@rendermode InteractiveServer
+
+<PageTitle>Katalog ve kampanyalar</PageTitle>
+
+<h2>Araç sınıfı</h2>
+<AuthorizeView Policy="@AppPolicies.CanWrite">
+    <Authorized Context="auth">
+        <EditForm Model="_cat" OnValidSubmit="AddCatAsync" FormName="catF">
+            <div class="row g-2 mb-3">
+                <div class="col-md-3"><InputText class="form-control" placeholder="Ad" @bind-Value="_cat.Name" /></div>
+                <div class="col-md-2"><InputText class="form-control" placeholder="Kod" @bind-Value="_cat.Code" /></div>
+                <div class="col-md-2"><button class="btn btn-primary" type="submit">Ekle</button></div>
+            </div>
+        </EditForm>
+    </Authorized>
+</AuthorizeView>
+<ul>@foreach (var c in _cats ?? []) { <li>@c.Name (@c.Code)</li> }</ul>
+
+<h2>Ek ürün</h2>
+<AuthorizeView Policy="@AppPolicies.CanWrite">
+    <Authorized Context="auth">
+        <EditForm Model="_ex" OnValidSubmit="AddExAsync" FormName="exF">
+            <div class="row g-2 mb-3">
+                <div class="col-md-2"><InputText class="form-control" placeholder="Kod" @bind-Value="_ex.Code" /></div>
+                <div class="col-md-3"><InputText class="form-control" placeholder="Ad" @bind-Value="_ex.Name" /></div>
+                <div class="col-md-2"><InputNumber class="form-control" @bind-Value="_ex.UnitPrice" /></div>
+                <div class="col-md-2"><button class="btn btn-primary" type="submit">Ekle</button></div>
+            </div>
+        </EditForm>
+    </Authorized>
+</AuthorizeView>
+<ul>@foreach (var e in _extras ?? []) { <li>@e.Code — @e.Name (@e.UnitPrice.ToString("N2") ₺)</li> }</ul>
+
+<h2>Kampanya</h2>
+<AuthorizeView Policy="@AppPolicies.CanWrite">
+    <Authorized Context="auth">
+        <EditForm Model="_camp" OnValidSubmit="AddCampAsync" FormName="campF">
+            <div class="row g-2 mb-3">
+                <div class="col-md-2"><InputText class="form-control" placeholder="Kod" @bind-Value="_camp.Code" /></div>
+                <div class="col-md-3"><InputText class="form-control" placeholder="Ad" @bind-Value="_camp.Name" /></div>
+                <div class="col-md-2"><InputNumber class="form-control" placeholder="%" @bind-Value="_camp.Percent" /></div>
+                <div class="col-md-2"><button class="btn btn-primary" type="submit">Ekle</button></div>
+            </div>
+        </EditForm>
+    </Authorized>
+</AuthorizeView>
+<ul>@foreach (var c in _camps ?? []) { <li>@c.Code — @c.Name (%@(c.PercentDiscount?.ToString() ?? "0"))</li> }</ul>
+
+<h2>Sezon fiyatı</h2>
+<AuthorizeView Policy="@AppPolicies.CanWrite">
+    <Authorized Context="auth">
+        <EditForm Model="_sea" OnValidSubmit="AddSeaAsync" FormName="seaF">
+            <div class="row g-2 mb-3">
+                <div class="col-md-2"><InputNumber class="form-control" placeholder="Kategori Id" @bind-Value="_sea.CategoryId" /></div>
+                <div class="col-md-2"><InputDate class="form-control" @bind-Value="_sea.From" /></div>
+                <div class="col-md-2"><InputDate class="form-control" @bind-Value="_sea.To" /></div>
+                <div class="col-md-2"><InputNumber class="form-control" placeholder="Günlük" @bind-Value="_sea.Daily" /></div>
+                <div class="col-md-2"><button class="btn btn-primary" type="submit">Ekle</button></div>
+            </div>
+        </EditForm>
+    </Authorized>
+</AuthorizeView>
+
+@if (_msg is not null) { <div class="alert alert-info">@_msg</div> }
+
+@code {
+    [Inject] public IDbContextFactory<AppDbContext> DbFactory { get; set; } = default!;
+    private List<VehicleCategory>? _cats;
+    private List<ExtraProduct>? _extras;
+    private List<Campaign>? _camps;
+    private CatForm _cat = new();
+    private ExForm _ex = new();
+    private CampForm _camp = new();
+    private SeaForm _sea = new() { From = DateTime.Today, To = DateTime.Today.AddMonths(3), Daily = 2000 };
+    private string? _msg;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _cats = await db.VehicleCategories.AsNoTracking().OrderBy(x => x.Name).ToListAsync();
+        _extras = await db.ExtraProducts.AsNoTracking().OrderBy(x => x.Code).ToListAsync();
+        _camps = await db.Campaigns.AsNoTracking().OrderBy(x => x.Code).ToListAsync();
+    }
+
+    private async Task AddCatAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.VehicleCategories.Add(new VehicleCategory { Name = _cat.Name.Trim(), Code = string.IsNullOrWhiteSpace(_cat.Code) ? null : _cat.Code.Trim() });
+        await db.SaveChangesAsync();
+        _cat = new();
+        await ReloadAsync();
+        _msg = "Sınıf eklendi.";
+    }
+
+    private async Task AddExAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.ExtraProducts.Add(new ExtraProduct { Code = _ex.Code.Trim().ToUpperInvariant(), Name = _ex.Name.Trim(), UnitPrice = _ex.UnitPrice, IsActive = true });
+        try { await db.SaveChangesAsync(); } catch { _msg = "Kod benzersiz olmalı."; return; }
+        _ex = new();
+        await ReloadAsync();
+        _msg = "Ek ürün eklendi.";
+    }
+
+    private async Task AddCampAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.Campaigns.Add(new Campaign
+        {
+            Code = _camp.Code.Trim().ToUpperInvariant(),
+            Name = _camp.Name.Trim(),
+            PercentDiscount = _camp.Percent,
+            ValidFromUtc = DateTime.UtcNow.AddDays(-1),
+            ValidToUtc = DateTime.UtcNow.AddYears(2),
+            IsActive = true
+        });
+        try { await db.SaveChangesAsync(); } catch { _msg = "Kod benzersiz."; return; }
+        _camp = new();
+        await ReloadAsync();
+        _msg = "Kampanya eklendi.";
+    }
+
+    private async Task AddSeaAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var from = DateTime.SpecifyKind(_sea.From, DateTimeKind.Utc);
+        var to = DateTime.SpecifyKind(_sea.To, DateTimeKind.Utc).AddDays(1).AddTicks(-1);
+        db.SeasonalPriceRules.Add(new SeasonalPriceRule
+        {
+            VehicleCategoryId = _sea.CategoryId,
+            VehicleId = null,
+            ValidFromUtc = from,
+            ValidToUtc = to,
+            DailyRate = _sea.Daily
+        });
+        await db.SaveChangesAsync();
+        _msg = "Sezon kuralı eklendi.";
+    }
+
+    private sealed class CatForm { public string Name { get; set; } = ""; public string? Code { get; set; } }
+    private sealed class ExForm { public string Code { get; set; } = ""; public string Name { get; set; } = ""; public decimal UnitPrice { get; set; } }
+    private sealed class CampForm { public string Code { get; set; } = ""; public string Name { get; set; } = ""; public decimal Percent { get; set; } = 10; }
+    private sealed class SeaForm
+    {
+        public int CategoryId { get; set; } = 1;
+        public DateTime From { get; set; }
+        public DateTime To { get; set; }
+        public decimal Daily { get; set; }
+    }
+}

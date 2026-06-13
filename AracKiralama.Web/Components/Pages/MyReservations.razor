@@ -1,0 +1,368 @@
+@page "/my-reservations"
+@attribute [Authorize(Roles = "Customer")]
+@rendermode InteractiveServer
+
+<PageTitle>Rezervasyonlarım</PageTitle>
+
+<h2>Rezervasyonlarım</h2>
+
+@if (_customerId is null)
+{
+    <div class="alert alert-warning">Hesabınız müşteri kaydıyla eşleşmiyor. Destek ile iletişime geçin.</div>
+}
+else if (_vehicles is null)
+{
+    <p>Yükleniyor…</p>
+}
+else if (_vehicles.Count == 0)
+{
+    <div class="alert alert-info">Şu an uygun araç listesi boş.</div>
+}
+else
+{
+    <EditForm Model="_model" OnValidSubmit="AddAsync" FormName="custResForm">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+        <div class="row g-2 align-items-end mb-3">
+            <div class="col-md-3">
+                <label class="form-label">Araç</label>
+                <InputSelect class="form-select" @bind-Value="_model.VehicleId">
+                    @foreach (var v in _vehicles)
+                    {
+                        <option value="@v.Id">@v.Label</option>
+                    }
+                </InputSelect>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Başlangıç</label>
+                <InputDate class="form-control" Type="InputDateType.DateTimeLocal" @bind-Value="_model.StartLocal" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Bitiş</label>
+                <InputDate class="form-control" Type="InputDateType.DateTimeLocal" @bind-Value="_model.EndLocal" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Kampanya kodu</label>
+                <InputText class="form-control" @bind-Value="_model.CampaignCode" placeholder="opsiyonel" />
+            </div>
+            <div class="col-md-3">
+                <button class="btn btn-primary" type="submit">Rezervasyon talebi</button>
+            </div>
+        </div>
+        @if (SelectedVehicle() is { } sel)
+        {
+            <div class="card border-secondary-subtle mb-3">
+                <div class="card-body py-2 px-3">
+                    <h6 class="card-title small mb-2">Seçili araç</h6>
+                    <dl class="row small mb-0">
+                        <dt class="col-sm-3">Sınıf</dt><dd class="col-sm-3">@sel.CategoryName</dd>
+                        <dt class="col-sm-3">Günlük</dt><dd class="col-sm-3">@sel.DailyRate.ToString("N2") ₺</dd>
+                        <dt class="col-sm-3">Model yılı</dt><dd class="col-sm-3">@(sel.ModelYear?.ToString() ?? "—")</dd>
+                        <dt class="col-sm-3">Kilometre</dt><dd class="col-sm-3">@(sel.OdometerKm?.ToString("N0") ?? "—") km</dd>
+                        <dt class="col-sm-3">Koltuk</dt><dd class="col-sm-3">@(sel.Seats?.ToString() ?? "—")</dd>
+                        <dt class="col-sm-3">Yakıt</dt><dd class="col-sm-3">@(string.IsNullOrWhiteSpace(sel.FuelType) ? "—" : sel.FuelType)</dd>
+                        <dt class="col-sm-3">Vites</dt><dd class="col-sm-3">@(string.IsNullOrWhiteSpace(sel.Transmission) ? "—" : sel.Transmission)</dd>
+                    </dl>
+                    @if (!string.IsNullOrWhiteSpace(sel.Features))
+                    {
+                        <p class="small text-body-secondary mb-0 mt-2" style="white-space: pre-wrap;"><strong>Özellikler:</strong> @sel.Features</p>
+                    }
+                </div>
+            </div>
+        }
+        @if (_extraRows is { Count: > 0 })
+        {
+            <div class="mb-3">
+                <label class="form-label">Ek ürünler (adet)</label>
+                <div class="row g-2">
+                    @foreach (var line in _extraRows)
+                    {
+                        <div class="col-6 col-md-4 col-lg-3">
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text flex-grow-1 text-start small">@line.Name</span>
+                                <InputNumber class="form-control" style="max-width:4rem" @bind-Value="line.Quantity" />
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </EditForm>
+}
+
+@if (_message is not null)
+{
+    <div class="alert alert-info">@_message</div>
+}
+
+<div class="d-flex justify-content-between align-items-center mb-2">
+    <h3 class="h6 mb-0">Kayıtlarım</h3>
+    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="RefreshListAsync">Listeyi yenile</button>
+</div>
+
+@if (_items is not null)
+{
+    <table class="table table-sm table-striped">
+        <thead>
+            <tr><th>Kayıt no</th><th>Araç</th><th>Başlangıç</th><th>Bitiş</th><th>Durum</th><th>Tahmini</th></tr>
+        </thead>
+        <tbody>
+            @foreach (var r in _items)
+            {
+                <tr>
+                    <td>@r.Id</td>
+                    <td>@r.VehicleLabel</td>
+                    <td>@r.StartLocal</td>
+                    <td>@r.EndLocal</td>
+                    <td>@TrLabels.ReservationState(r.State)</td>
+                    <td>@(r.Estimated?.ToString("N2") ?? "—")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    [Inject] public IDbContextFactory<AppDbContext> DbFactory { get; set; } = default!;
+    [Inject] public AuthenticationStateProvider Auth { get; set; } = default!;
+
+    private int? _customerId;
+    private List<VehiclePickRow>? _vehicles;
+    private List<ExtraQtyRow>? _extraRows;
+    private List<ResRow>? _items;
+    private ResForm _model = new();
+    private string? _message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = (await Auth.GetAuthenticationStateAsync()).User;
+        var uid = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (uid is null)
+        {
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _customerId = await db.Customers.AsNoTracking().Where(c => c.ApplicationUserId == uid).Select(c => (int?)c.Id).FirstOrDefaultAsync();
+        if (_customerId is null)
+        {
+            return;
+        }
+
+        var vehRaw = await db.Vehicles.AsNoTracking()
+            .Where(v => v.Status == VehicleStatus.Available)
+            .OrderBy(v => v.Plate)
+            .Select(v => new
+            {
+                v.Id,
+                Label = v.Plate + " " + v.Brand + " " + v.Model,
+                v.ModelYear,
+                v.OdometerKm,
+                v.Seats,
+                v.FuelType,
+                v.Transmission,
+                v.Features,
+                v.DailyRate,
+                CategoryName = v.VehicleCategory.Name
+            })
+            .ToListAsync();
+        _vehicles = vehRaw.Select(v => new VehiclePickRow(
+            v.Id,
+            v.Label,
+            v.ModelYear,
+            v.OdometerKm,
+            v.Seats,
+            v.FuelType,
+            v.Transmission,
+            v.Features,
+            v.DailyRate,
+            v.CategoryName)).ToList();
+
+        var extraRaw = await db.ExtraProducts.AsNoTracking()
+            .Where(p => p.IsActive)
+            .OrderBy(p => p.Name)
+            .Select(p => new { p.Id, p.Name, p.UnitPrice })
+            .ToListAsync();
+        _extraRows = extraRaw.Select(p => new ExtraQtyRow
+        {
+            ProductId = p.Id,
+            Name = p.Name,
+            UnitPrice = p.UnitPrice,
+            Quantity = 0
+        }).ToList();
+
+        if (_vehicles.Count > 0)
+        {
+            _model.VehicleId = _vehicles[0].Id;
+            var n = DateTime.Now;
+            _model.StartLocal = n;
+            _model.EndLocal = n.AddDays(1);
+        }
+
+        await ReloadListAsync();
+    }
+
+    private VehiclePickRow? SelectedVehicle() => _vehicles?.FirstOrDefault(v => v.Id == _model.VehicleId);
+
+    private async Task RefreshListAsync()
+    {
+        _message = null;
+        await ReloadListAsync();
+        _message = "Liste güncellendi.";
+    }
+
+    private async Task ReloadListAsync()
+    {
+        if (_customerId is null)
+        {
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var raw = await db.Reservations.AsNoTracking()
+            .Where(r => r.CustomerId == _customerId.Value)
+            .OrderByDescending(r => r.Id)
+            .Select(r => new
+            {
+                r.Id,
+                Label = r.Vehicle.Plate + " " + r.Vehicle.Brand,
+                r.StartUtc,
+                r.EndUtc,
+                r.State,
+                r.EstimatedTotal
+            })
+            .ToListAsync();
+
+        _items = raw.Select(r => new ResRow(
+            r.Id,
+            r.Label,
+            r.StartUtc.ToLocalTime(),
+            r.EndUtc.ToLocalTime(),
+            r.State,
+            r.EstimatedTotal)).ToList();
+    }
+
+    private async Task AddAsync()
+    {
+        _message = null;
+        if (_customerId is null)
+        {
+            return;
+        }
+
+        if (_model.EndLocal <= _model.StartLocal)
+        {
+            _message = "Bitiş başlangıçtan sonra olmalı.";
+            return;
+        }
+
+        var startUtc = DateTime.SpecifyKind(_model.StartLocal, DateTimeKind.Local).ToUniversalTime();
+        var endUtc = DateTime.SpecifyKind(_model.EndLocal, DateTimeKind.Local).ToUniversalTime();
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        if (await ReservationScheduling.HasOverlapAsync(db, _model.VehicleId, startUtc, endUtc, null))
+        {
+            _message = "Bu araç için tarihlerde başka bir rezervasyon var.";
+            return;
+        }
+
+        if (await RentalScheduling.HasOverlapAsync(db, _model.VehicleId, startUtc, endUtc, null))
+        {
+            _message = "Bu araç için tarihlerde onaylı kiralama çakışması var.";
+            return;
+        }
+
+        Campaign? camp = null;
+        if (!string.IsNullOrWhiteSpace(_model.CampaignCode))
+        {
+            var code = _model.CampaignCode.Trim().ToUpperInvariant();
+            camp = await db.Campaigns.FirstOrDefaultAsync(c => c.Code == code && c.IsActive);
+            if (camp is null)
+            {
+                _message = "Kampanya kodu geçersiz.";
+                return;
+            }
+        }
+
+        var (_, _, baseNet) = await PricingResolver.ComputeBaseRentalAsync(db, _model.VehicleId, startUtc, endUtc, camp?.Id);
+        decimal extrasTotal = 0;
+        var lines = new List<ReservationExtraLine>();
+        foreach (var row in _extraRows ?? [])
+        {
+            if (row.Quantity <= 0)
+            {
+                continue;
+            }
+
+            var lineTotal = row.UnitPrice * row.Quantity;
+            extrasTotal += lineTotal;
+            lines.Add(new ReservationExtraLine
+            {
+                ExtraProductId = row.ProductId,
+                Quantity = row.Quantity,
+                UnitPrice = row.UnitPrice,
+                LineTotal = lineTotal
+            });
+        }
+
+        var est = baseNet + extrasTotal;
+
+        var res = new Reservation
+        {
+            CustomerId = _customerId.Value,
+            VehicleId = _model.VehicleId,
+            StartUtc = startUtc,
+            EndUtc = endUtc,
+            State = ReservationState.Pending,
+            EstimatedTotal = est,
+            CampaignId = camp?.Id,
+            Notes = null
+        };
+        foreach (var line in lines)
+        {
+            res.ExtraLines.Add(line);
+        }
+
+        db.Reservations.Add(res);
+
+        if (camp is not null)
+        {
+            camp.RedeemedCount++;
+        }
+
+        await db.SaveChangesAsync();
+        await ReloadListAsync();
+        _message = "Rezervasyon talebiniz alındı (beklemede).";
+    }
+
+    private sealed record VehiclePickRow(
+        int Id,
+        string Label,
+        int? ModelYear,
+        int? OdometerKm,
+        int? Seats,
+        string? FuelType,
+        string? Transmission,
+        string? Features,
+        decimal DailyRate,
+        string CategoryName);
+
+    private sealed class ExtraQtyRow
+    {
+        public int ProductId { get; set; }
+        public string Name { get; set; } = "";
+        public decimal UnitPrice { get; set; }
+        public int Quantity { get; set; }
+    }
+
+    private sealed record ResRow(int Id, string VehicleLabel, DateTime StartLocal, DateTime EndLocal, ReservationState State, decimal? Estimated);
+
+    private sealed class ResForm
+    {
+        [Range(1, int.MaxValue)]
+        public int VehicleId { get; set; }
+        public DateTime StartLocal { get; set; }
+        public DateTime EndLocal { get; set; }
+        public string? CampaignCode { get; set; }
+    }
+}

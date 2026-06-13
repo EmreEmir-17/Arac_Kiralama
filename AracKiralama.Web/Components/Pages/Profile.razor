@@ -1,0 +1,349 @@
+@page "/profile"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+<PageTitle>Profil</PageTitle>
+
+<h2>Profil</h2>
+
+@if (_loadError is not null)
+{
+    <div class="alert alert-warning">@_loadError</div>
+}
+else if (_model is null)
+{
+    <p>Yükleniyor…</p>
+}
+else
+{
+    <div class="row g-4 align-items-start">
+        <div class="col-lg-6">
+            <EditForm Model="_model" OnValidSubmit="SaveAsync" FormName="profileForm">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+                <div class="row g-3">
+                    <div class="col-12">
+                        <label class="form-label">E-posta</label>
+                        <input class="form-control" value="@_model.Email" disabled />
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Görünen ad</label>
+                        <InputText class="form-control" @bind-Value="_model.DisplayName" />
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Ad / ünvan (müşteri)</label>
+                        <InputText class="form-control" @bind-Value="_model.CustomerFullName" />
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Telefon</label>
+                        <InputText class="form-control" @bind-Value="_model.Phone" />
+                    </div>
+                    @if (_model.IsCorporate)
+                    {
+                        <div class="col-12">
+                            <label class="form-label">Vergi numarası</label>
+                            <InputText class="form-control" @bind-Value="_model.TaxNumber" />
+                        </div>
+                    }
+                    <div class="col-12">
+                        <button class="btn btn-primary" type="submit">Kaydet</button>
+                    </div>
+                </div>
+            </EditForm>
+        </div>
+        <div class="col-lg-6">
+            @if (_payment is not null)
+            {
+                <div class="card border-0 shadow-sm mb-3">
+                    <div class="card-body">
+                        <h3 class="h6 card-title">Ödeme ve tutar özeti</h3>
+                        <p class="text-muted small mb-3">Aşağıdaki tutarlar kayıtlarınıza göre hesaplanır; tahsilat şube veya yönetim süreçlerine bağlıdır.</p>
+                        <dl class="row mb-0 small">
+                            <dt class="col-sm-7">Faturalarda kalan ödeme</dt>
+                            <dd class="col-sm-5 text-end fw-semibold">@_payment.InvoiceRemaining.ToString("N2") ₺</dd>
+                            <dt class="col-sm-7">Faturası kesilmemiş kiralamalar (tahmini)</dt>
+                            <dd class="col-sm-5 text-end">@_payment.UninvoicedRentalsEstimated.ToString("N2") ₺</dd>
+                            <dt class="col-sm-7">Açık rezervasyon tahmini</dt>
+                            <dd class="col-sm-5 text-end">@_payment.OpenReservationEstimated.ToString("N2") ₺</dd>
+                            <dt class="col-sm-7 pt-2 border-top">Fatura + kesilecek kiralama (tahmini toplam)</dt>
+                            <dd class="col-sm-5 text-end pt-2 border-top fw-bold text-primary">@_payment.InvoicePlusUninvoicedRental.ToString("N2") ₺</dd>
+                        </dl>
+                    </div>
+                </div>
+            }
+            @if (_finance is not null)
+            {
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body">
+                        <h3 class="h6 card-title">Gelir — gider — kar</h3>
+                        <p class="text-muted small mb-2">Gelir: tahsilat (ödeme kayıtları). Gider: bakım kayıtlarındaki maliyet toplamı. Tarihler UTC.</p>
+                        <div class="mb-3">
+                            <label class="form-label small mb-1">Dönem</label>
+                            <select class="form-select form-select-sm" style="max-width: 14rem" @bind="_financeWindowInt" @bind:after="RefreshFinanceAsync">
+                                <option value="0">Bu ay (UTC)</option>
+                                <option value="1">Bu yıl (UTC)</option>
+                                <option value="2">Tüm zaman</option>
+                            </select>
+                        </div>
+                        <dl class="row mb-0 small">
+                            <dt class="col-sm-6">Tahsilat (gelir)</dt>
+                            <dd class="col-sm-6 text-end fw-semibold text-success">@_finance.Revenue.ToString("N2") ₺</dd>
+                            <dt class="col-sm-6">Bakım gideri</dt>
+                            <dd class="col-sm-6 text-end text-danger">@_finance.Expense.ToString("N2") ₺</dd>
+                            <dt class="col-sm-6 pt-2 border-top">Tahmini kar</dt>
+                            <dd class="col-sm-6 text-end pt-2 border-top fw-bold @(_finance.Profit >= 0 ? "text-primary" : "text-danger")">@_finance.Profit.ToString("N2") ₺</dd>
+                        </dl>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@if (_message is not null)
+{
+    <div class="alert alert-info mt-3">@_message</div>
+}
+
+@code {
+    [Inject] public IDbContextFactory<AppDbContext> DbFactory { get; set; } = default!;
+    [Inject] public AuthenticationStateProvider Auth { get; set; } = default!;
+    [Inject] public UserManager<ApplicationUser> UserManager { get; set; } = default!;
+
+    private ProfileForm? _model;
+    private PaymentSummary? _payment;
+    private FinanceSummary? _finance;
+    private string? _loadError;
+    private string? _message;
+    private string? _userId;
+    private int? _customerId;
+    private FinanceWindow _financeWindow = FinanceWindow.CurrentMonth;
+
+    private int _financeWindowInt
+    {
+        get => (int)_financeWindow;
+        set => _financeWindow = (FinanceWindow)value;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Auth.GetAuthenticationStateAsync();
+        _userId = state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (_userId is null)
+        {
+            _loadError = "Oturum bulunamadı.";
+            return;
+        }
+
+        var user = await UserManager.FindByIdAsync(_userId);
+        if (user is null)
+        {
+            _loadError = "Kullanıcı bulunamadı.";
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var cust = await db.Customers.AsNoTracking().FirstOrDefaultAsync(c => c.ApplicationUserId == _userId);
+        _customerId = cust?.Id;
+        _model = new ProfileForm
+        {
+            Email = user.Email ?? user.UserName ?? "",
+            DisplayName = user.DisplayName ?? "",
+            CustomerFullName = cust?.FullName ?? user.DisplayName ?? "",
+            Phone = cust?.Phone,
+            TaxNumber = cust?.TaxNumber,
+            IsCorporate = cust?.IsCorporate ?? false
+        };
+
+        if (_customerId is not null)
+        {
+            _payment = await LoadPaymentSummaryAsync(db, _customerId.Value);
+        }
+
+        if (IsStaff(state.User))
+        {
+            _finance = await LoadFinanceSummaryAsync(db, _financeWindow);
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _message = null;
+        if (_userId is null || _model is null)
+        {
+            return;
+        }
+
+        var user = await UserManager.FindByIdAsync(_userId);
+        if (user is null)
+        {
+            return;
+        }
+
+        user.DisplayName = string.IsNullOrWhiteSpace(_model.DisplayName) ? null : _model.DisplayName.Trim();
+        await UserManager.UpdateAsync(user);
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var cust = await db.Customers.FirstOrDefaultAsync(c => c.ApplicationUserId == _userId);
+        if (cust is not null)
+        {
+            cust.FullName = string.IsNullOrWhiteSpace(_model.CustomerFullName) ? cust.FullName : _model.CustomerFullName.Trim();
+            cust.Phone = string.IsNullOrWhiteSpace(_model.Phone) ? null : _model.Phone.Trim();
+            if (cust.IsCorporate)
+            {
+                cust.TaxNumber = string.IsNullOrWhiteSpace(_model.TaxNumber) ? null : _model.TaxNumber.Trim();
+            }
+
+            await db.SaveChangesAsync();
+        }
+
+        if (_customerId is not null)
+        {
+            await using var db2 = await DbFactory.CreateDbContextAsync();
+            _payment = await LoadPaymentSummaryAsync(db2, _customerId.Value);
+        }
+
+        var state = await Auth.GetAuthenticationStateAsync();
+        if (IsStaff(state.User))
+        {
+            await using var db3 = await DbFactory.CreateDbContextAsync();
+            _finance = await LoadFinanceSummaryAsync(db3, _financeWindow);
+        }
+
+        _message = "Profil güncellendi.";
+    }
+
+    private async Task RefreshFinanceAsync()
+    {
+        if (!IsStaff((await Auth.GetAuthenticationStateAsync()).User))
+        {
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _finance = await LoadFinanceSummaryAsync(db, _financeWindow);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private static bool IsStaff(ClaimsPrincipal user) =>
+        user.IsInRole(AppRoles.Admin) || user.IsInRole(AppRoles.Operator) || user.IsInRole(AppRoles.ReadOnly);
+
+    private static async Task<FinanceSummary> LoadFinanceSummaryAsync(AppDbContext db, FinanceWindow window)
+    {
+        decimal revenue;
+        decimal expense;
+        if (window == FinanceWindow.AllTime)
+        {
+            revenue = await (
+                from p in db.Payments.AsNoTracking()
+                join i in db.Invoices.AsNoTracking() on p.InvoiceId equals i.Id
+                where i.Status != InvoiceStatus.Cancelled
+                select p.Amount).SumAsync();
+            expense = await db.MaintenanceRecords.AsNoTracking()
+                .Where(m => m.Cost != null)
+                .SumAsync(m => m.Cost!.Value);
+        }
+        else
+        {
+            var (startUtc, endExclusiveUtc) = GetPeriodBounds(window);
+            revenue = await (
+                from p in db.Payments.AsNoTracking()
+                join i in db.Invoices.AsNoTracking() on p.InvoiceId equals i.Id
+                where i.Status != InvoiceStatus.Cancelled
+                      && p.PaidUtc >= startUtc && p.PaidUtc < endExclusiveUtc
+                select p.Amount).SumAsync();
+            expense = await db.MaintenanceRecords.AsNoTracking()
+                .Where(m => m.Cost != null && m.ServiceDateUtc >= startUtc && m.ServiceDateUtc < endExclusiveUtc)
+                .SumAsync(m => m.Cost!.Value);
+        }
+
+        return new FinanceSummary(revenue, expense, revenue - expense);
+    }
+
+    private static (DateTime StartUtc, DateTime EndExclusiveUtc) GetPeriodBounds(FinanceWindow window)
+    {
+        var now = DateTime.UtcNow;
+        return window switch
+        {
+            FinanceWindow.CurrentMonth => (
+                new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc),
+                new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1)),
+            FinanceWindow.CurrentYear => (
+                new DateTime(now.Year, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                new DateTime(now.Year + 1, 1, 1, 0, 0, 0, DateTimeKind.Utc)),
+            _ => throw new ArgumentOutOfRangeException(nameof(window), window, null)
+        };
+    }
+
+    private static async Task<PaymentSummary> LoadPaymentSummaryAsync(AppDbContext db, int customerId)
+    {
+        var invRows = await (
+            from i in db.Invoices.AsNoTracking()
+            join r in db.Rentals.AsNoTracking() on i.RentalId equals r.Id
+            where r.CustomerId == customerId && i.Status != InvoiceStatus.Cancelled
+            select new { i.Id, i.Total }).ToListAsync();
+
+        decimal invoiceRemaining = 0;
+        if (invRows.Count > 0)
+        {
+            var ids = invRows.Select(x => x.Id).ToList();
+            var paidRows = await db.Payments.AsNoTracking()
+                .Where(p => ids.Contains(p.InvoiceId))
+                .GroupBy(p => p.InvoiceId)
+                .Select(g => new { Id = g.Key, Sum = g.Sum(p => p.Amount) })
+                .ToListAsync();
+            var paidMap = paidRows.ToDictionary(x => x.Id, x => x.Sum);
+
+            foreach (var row in invRows)
+            {
+                paidMap.TryGetValue(row.Id, out var paid);
+                var rem = row.Total - paid;
+                if (rem > 0.009m)
+                {
+                    invoiceRemaining += rem;
+                }
+            }
+        }
+
+        var uninvoicedRentals = await db.Rentals.AsNoTracking()
+            .Where(r => r.CustomerId == customerId
+                        && r.State != RentalState.Cancelled
+                        && !db.Invoices.Any(i => i.RentalId == r.Id))
+            .SumAsync(r => (decimal?)(r.TotalPrice ?? 0m)) ?? 0m;
+
+        var openRes = await db.Reservations.AsNoTracking()
+            .Where(r => r.CustomerId == customerId
+                        && r.State != ReservationState.Cancelled
+                        && r.State != ReservationState.ConvertedToRental)
+            .SumAsync(r => (decimal?)(r.EstimatedTotal ?? 0m)) ?? 0m;
+
+        return new PaymentSummary(invoiceRemaining, uninvoicedRentals, openRes);
+    }
+
+    private sealed record PaymentSummary(
+        decimal InvoiceRemaining,
+        decimal UninvoicedRentalsEstimated,
+        decimal OpenReservationEstimated)
+    {
+        public decimal InvoicePlusUninvoicedRental => InvoiceRemaining + UninvoicedRentalsEstimated;
+    }
+
+    private enum FinanceWindow
+    {
+        CurrentMonth = 0,
+        CurrentYear = 1,
+        AllTime = 2
+    }
+
+    private sealed record FinanceSummary(decimal Revenue, decimal Expense, decimal Profit);
+
+    private sealed class ProfileForm
+    {
+        public string Email { get; set; } = "";
+        public string? DisplayName { get; set; }
+        public string? CustomerFullName { get; set; }
+        public string? Phone { get; set; }
+        public string? TaxNumber { get; set; }
+        public bool IsCorporate { get; set; }
+    }
+}

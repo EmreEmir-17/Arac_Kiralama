@@ -1,0 +1,159 @@
+@page "/customers"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+<PageTitle>Müşteriler</PageTitle>
+
+<h2>Müşteriler</h2>
+
+<AuthorizeView Policy="@AppPolicies.CanWrite">
+    <Authorized Context="auth">
+        <EditForm Model="_model" OnValidSubmit="AddAsync" FormName="customerForm">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+            <div class="row g-2 align-items-end mb-3">
+                <div class="col-md-3">
+                    <label class="form-label">Ad Soyad / Ünvan</label>
+                    <InputText class="form-control" @bind-Value="_model.FullName" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">E-posta</label>
+                    <InputText class="form-control" @bind-Value="_model.Email" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Telefon</label>
+                    <InputText class="form-control" @bind-Value="_model.Phone" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Vergi no</label>
+                    <InputText class="form-control" @bind-Value="_model.TaxNumber" />
+                </div>
+                <div class="col-md-1 form-check mt-4">
+                    <InputCheckbox class="form-check-input" @bind-Value="_model.IsCorporate" />
+                    <label class="form-check-label">Kurumsal</label>
+                </div>
+                <div class="col-md-2">
+                    <button class="btn btn-primary w-100" type="submit">Ekle</button>
+                </div>
+            </div>
+        </EditForm>
+    </Authorized>
+</AuthorizeView>
+
+@if (_message is not null)
+{
+    <div class="alert alert-info">@_message</div>
+}
+
+@if (_items is null)
+{
+    <p>Yükleniyor…</p>
+}
+else
+{
+    <table class="table table-striped table-sm">
+        <thead>
+            <tr>
+                <th>Id</th>
+                <th>Ad</th>
+                <th>E-posta</th>
+                <th>Telefon</th>
+                <th>Tür</th>
+                <th>İşlem</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var c in _items)
+            {
+                <tr>
+                    <td>@c.Id</td>
+                    <td>@c.FullName</td>
+                    <td>@c.Email</td>
+                    <td>@c.Phone</td>
+                    <td>@(c.IsCorporate ? "Kurumsal" : "Bireysel")</td>
+                    <td>
+                        <AuthorizeView Policy="@AppPolicies.CanWrite">
+                            <Authorized Context="auth">
+                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(c.Id)">Sil</button>
+                            </Authorized>
+                            <NotAuthorized>
+                                <span class="text-muted">—</span>
+                            </NotAuthorized>
+                        </AuthorizeView>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    [Inject] public IDbContextFactory<AppDbContext> DbFactory { get; set; } = default!;
+
+    private List<Customer>? _items;
+    private CustomerForm _model = new();
+    private string? _message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _items = await db.Customers.AsNoTracking().OrderByDescending(x => x.Id).ToListAsync();
+    }
+
+    private async Task AddAsync()
+    {
+        _message = null;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.Customers.Add(new Customer
+        {
+            FullName = _model.FullName.Trim(),
+            Email = string.IsNullOrWhiteSpace(_model.Email) ? null : _model.Email.Trim(),
+            Phone = string.IsNullOrWhiteSpace(_model.Phone) ? null : _model.Phone.Trim(),
+            TaxNumber = string.IsNullOrWhiteSpace(_model.TaxNumber) ? null : _model.TaxNumber.Trim(),
+            IsCorporate = _model.IsCorporate
+        });
+        await db.SaveChangesAsync();
+        _model = new CustomerForm();
+        await ReloadAsync();
+        _message = "Müşteri kaydedildi.";
+    }
+
+    private async Task DeleteAsync(int id)
+    {
+        _message = null;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var c = await db.Customers.FindAsync(id);
+        if (c is null)
+        {
+            return;
+        }
+
+        db.Customers.Remove(c);
+        try
+        {
+            await db.SaveChangesAsync();
+            await ReloadAsync();
+            _message = "Müşteri silindi.";
+        }
+        catch (DbUpdateException)
+        {
+            _message = "Kiralama kaydı varken silinemez.";
+        }
+    }
+
+    private sealed class CustomerForm
+    {
+        [Required(ErrorMessage = "Ad zorunlu")]
+        public string FullName { get; set; } = string.Empty;
+
+        public string? Email { get; set; }
+        public string? Phone { get; set; }
+        public string? TaxNumber { get; set; }
+        public bool IsCorporate { get; set; }
+    }
+}

@@ -1,0 +1,145 @@
+@page "/branches"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+<PageTitle>Şubeler</PageTitle>
+
+<h2>Şubeler</h2>
+
+<AuthorizeView Policy="@AppPolicies.CanWrite">
+    <Authorized Context="auth">
+        <EditForm Model="_model" OnValidSubmit="AddAsync" FormName="branchForm">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+            <div class="row g-2 align-items-end mb-3">
+                <div class="col-md-4">
+                    <label class="form-label">Ad</label>
+                    <InputText class="form-control" @bind-Value="_model.Name" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Şehir</label>
+                    <InputText class="form-control" @bind-Value="_model.City" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Telefon</label>
+                    <InputText class="form-control" @bind-Value="_model.Phone" />
+                </div>
+                <div class="col-md-2">
+                    <button class="btn btn-primary w-100" type="submit">Ekle</button>
+                </div>
+            </div>
+        </EditForm>
+    </Authorized>
+</AuthorizeView>
+
+@if (_message is not null)
+{
+    <div class="alert alert-info">@_message</div>
+}
+
+@if (_items is null)
+{
+    <p>Yükleniyor…</p>
+}
+else
+{
+    <table class="table table-striped table-sm">
+        <thead>
+            <tr>
+                <th>Id</th>
+                <th>Ad</th>
+                <th>Şehir</th>
+                <th>Telefon</th>
+                <th>İşlem</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var b in _items)
+            {
+                <tr>
+                    <td>@b.Id</td>
+                    <td>@b.Name</td>
+                    <td>@b.City</td>
+                    <td>@b.Phone</td>
+                    <AuthorizeView Policy="@AppPolicies.CanWrite">
+                        <Authorized Context="auth">
+                            <td>
+                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(b.Id)">Sil</button>
+                            </td>
+                        </Authorized>
+                        <NotAuthorized>
+                            <td class="text-muted">—</td>
+                        </NotAuthorized>
+                    </AuthorizeView>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    [Inject] public IDbContextFactory<AppDbContext> DbFactory { get; set; } = default!;
+
+    private List<Branch>? _items;
+    private BranchForm _model = new();
+    private string? _message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _items = await db.Branches.AsNoTracking().OrderBy(x => x.Name).ToListAsync();
+    }
+
+    private async Task AddAsync()
+    {
+        _message = null;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.Branches.Add(new Branch
+        {
+            Name = _model.Name.Trim(),
+            City = string.IsNullOrWhiteSpace(_model.City) ? null : _model.City.Trim(),
+            Phone = string.IsNullOrWhiteSpace(_model.Phone) ? null : _model.Phone.Trim()
+        });
+        await db.SaveChangesAsync();
+        _model = new BranchForm();
+        await ReloadAsync();
+        _message = "Şube kaydedildi.";
+    }
+
+    private async Task DeleteAsync(int id)
+    {
+        _message = null;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var entity = await db.Branches.FindAsync(id);
+        if (entity is null)
+        {
+            return;
+        }
+
+        db.Branches.Remove(entity);
+        try
+        {
+            await db.SaveChangesAsync();
+            await ReloadAsync();
+            _message = "Şube silindi.";
+        }
+        catch (DbUpdateException)
+        {
+            _message = "Bu şubeye bağlı araçlar varken silinemez.";
+        }
+    }
+
+    private sealed class BranchForm
+    {
+        [Required(ErrorMessage = "Ad zorunlu")]
+        public string Name { get; set; } = string.Empty;
+
+        public string? City { get; set; }
+        public string? Phone { get; set; }
+    }
+}
